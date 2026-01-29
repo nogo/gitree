@@ -143,8 +143,8 @@ func (r *Reader) loadCommitsFromRepo(repo *git.Repository, limit int) ([]domain.
 		iter.Close()
 	}
 
-	// Sort commits by date (newest first)
-	sortCommitsByDate(commits)
+	// Topological sort: children before parents, with date as tiebreaker
+	commits = topoSortCommits(commits)
 
 	// Apply limit if specified
 	if limit > 0 && len(commits) > limit {
@@ -154,11 +154,100 @@ func (r *Reader) loadCommitsFromRepo(repo *git.Repository, limit int) ([]domain.
 	return commits, nil
 }
 
-// sortCommitsByDate sorts commits by date descending (newest first)
-func sortCommitsByDate(commits []domain.Commit) {
-	sort.Slice(commits, func(i, j int) bool {
-		return commits[i].Date.After(commits[j].Date)
+// topoSortCommits sorts commits topologically (children before parents)
+// with date as secondary sort key for commits at the same level
+func topoSortCommits(commits []domain.Commit) []domain.Commit {
+	if len(commits) == 0 {
+		return commits
+	}
+
+	// Build hash -> commit map and hash -> index map
+	hashToCommit := make(map[string]*domain.Commit)
+	for i := range commits {
+		hashToCommit[commits[i].Hash] = &commits[i]
+		if len(commits[i].Hash) >= 7 {
+			hashToCommit[commits[i].Hash[:7]] = &commits[i]
+		}
+	}
+
+	// Build child count (in-degree for reverse topo sort)
+	childCount := make(map[string]int)
+	for i := range commits {
+		childCount[commits[i].Hash] = 0
+	}
+	for i := range commits {
+		for _, parentHash := range commits[i].Parents {
+			// Find the parent in our commit set
+			if _, exists := hashToCommit[parentHash]; exists {
+				childCount[parentHash]++
+			} else if len(parentHash) >= 7 {
+				if _, exists := hashToCommit[parentHash[:7]]; exists {
+					childCount[parentHash[:7]]++
+				}
+			}
+		}
+	}
+
+	// Find all commits with no children (roots of our view)
+	var ready []domain.Commit
+	for i := range commits {
+		if childCount[commits[i].Hash] == 0 {
+			ready = append(ready, commits[i])
+		}
+	}
+
+	// Sort ready list by date (newest first)
+	sort.Slice(ready, func(i, j int) bool {
+		return ready[i].Date.After(ready[j].Date)
 	})
+
+	// Process commits in topological order
+	var result []domain.Commit
+	seen := make(map[string]bool)
+
+	for len(ready) > 0 {
+		// Take the newest commit from ready list
+		commit := ready[0]
+		ready = ready[1:]
+
+		if seen[commit.Hash] {
+			continue
+		}
+		seen[commit.Hash] = true
+		result = append(result, commit)
+
+		// Decrement child count for parents
+		for _, parentHash := range commit.Parents {
+			var parentCommit *domain.Commit
+			if c, exists := hashToCommit[parentHash]; exists {
+				parentCommit = c
+			} else if len(parentHash) >= 7 {
+				if c, exists := hashToCommit[parentHash[:7]]; exists {
+					parentCommit = c
+				}
+			}
+
+			if parentCommit != nil && !seen[parentCommit.Hash] {
+				childCount[parentCommit.Hash]--
+				if childCount[parentCommit.Hash] == 0 {
+					// Insert into ready list maintaining date order
+					inserted := false
+					for i := range ready {
+						if parentCommit.Date.After(ready[i].Date) {
+							ready = append(ready[:i], append([]domain.Commit{*parentCommit}, ready[i:]...)...)
+							inserted = true
+							break
+						}
+					}
+					if !inserted {
+						ready = append(ready, *parentCommit)
+					}
+				}
+			}
+		}
+	}
+
+	return result
 }
 
 func (r *Reader) LoadBranches(path string) ([]domain.Branch, error) {
