@@ -81,51 +81,85 @@ func (r *Reader) loadCommitsFromRepo(repo *git.Repository, limit int) ([]domain.
 		return []domain.Commit{}, nil
 	}
 
-	logOpts := &git.LogOptions{
-		From:  head.Hash(),
-		Order: git.LogOrderCommitterTime,
-	}
+	// Collect all branch head hashes to include commits from all branches
+	var allBranchHashes []plumbing.Hash
+	allBranchHashes = append(allBranchHashes, head.Hash())
 
-	iter, err := repo.Log(logOpts)
-	if err != nil {
-		return nil, err
-	}
-	defer iter.Close()
-
-	var commits []domain.Commit
-	count := 0
-
-	err = iter.ForEach(func(c *object.Commit) error {
-		if limit > 0 && count >= limit {
-			return nil
-		}
-
-		parents := make([]string, len(c.ParentHashes))
-		for i, p := range c.ParentHashes {
-			parents[i] = p.String()
-		}
-
-		hash := c.Hash.String()
-		commits = append(commits, domain.Commit{
-			Hash:        hash,
-			ShortHash:   hash[:7],
-			Author:      c.Author.Name,
-			Email:       c.Author.Email,
-			Date:        c.Author.When,
-			Message:     firstLine(c.Message),
-			FullMessage: c.Message,
-			Parents:     parents,
-			BranchRefs:  branchRefs[hash],
-		})
-		count++
+	localBranches, _ := repo.Branches()
+	localBranches.ForEach(func(ref *plumbing.Reference) error {
+		allBranchHashes = append(allBranchHashes, ref.Hash())
 		return nil
 	})
 
-	if err != nil {
-		return nil, err
+	allRefs, _ := repo.References()
+	allRefs.ForEach(func(ref *plumbing.Reference) error {
+		if strings.HasPrefix(ref.Name().String(), "refs/remotes/") {
+			allBranchHashes = append(allBranchHashes, ref.Hash())
+		}
+		return nil
+	})
+
+	// Use a map to deduplicate commits from multiple branches
+	seen := make(map[string]bool)
+	var commits []domain.Commit
+
+	for _, branchHash := range allBranchHashes {
+		logOpts := &git.LogOptions{
+			From:  branchHash,
+			Order: git.LogOrderCommitterTime,
+		}
+
+		iter, err := repo.Log(logOpts)
+		if err != nil {
+			continue
+		}
+
+		iter.ForEach(func(c *object.Commit) error {
+			hash := c.Hash.String()
+			if seen[hash] {
+				return nil
+			}
+			seen[hash] = true
+
+			parents := make([]string, len(c.ParentHashes))
+			for i, p := range c.ParentHashes {
+				parents[i] = p.String()
+			}
+
+			commits = append(commits, domain.Commit{
+				Hash:        hash,
+				ShortHash:   hash[:7],
+				Author:      c.Author.Name,
+				Email:       c.Author.Email,
+				Date:        c.Author.When,
+				Message:     firstLine(c.Message),
+				FullMessage: c.Message,
+				Parents:     parents,
+				BranchRefs:  branchRefs[hash],
+			})
+			return nil
+		})
+		iter.Close()
+	}
+
+	// Sort commits by date (newest first)
+	sortCommitsByDate(commits)
+
+	// Apply limit if specified
+	if limit > 0 && len(commits) > limit {
+		commits = commits[:limit]
 	}
 
 	return commits, nil
+}
+
+// sortCommitsByDate sorts commits by date descending (newest first)
+func sortCommitsByDate(commits []domain.Commit) {
+	for i := 1; i < len(commits); i++ {
+		for j := i; j > 0 && commits[j].Date.After(commits[j-1].Date); j-- {
+			commits[j], commits[j-1] = commits[j-1], commits[j]
+		}
+	}
 }
 
 func (r *Reader) LoadBranches(path string) ([]domain.Branch, error) {
