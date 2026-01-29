@@ -114,26 +114,32 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		case "G", "end":
 			m.cursorTo(len(m.commits) - 1)
 		}
-		m.syncViewport()
 		m.viewport.SetContent(m.renderList())
+		m.syncViewport()
+		// Don't pass navigation keys to viewport - we handle scrolling ourselves
+		return m, nil
 
 	case tea.MouseMsg:
 		switch msg.Type {
 		case tea.MouseWheelUp:
 			m.cursorUp(3)
-			m.syncViewport()
 			m.viewport.SetContent(m.renderList())
+			m.syncViewport()
+			return m, nil
 		case tea.MouseWheelDown:
 			m.cursorDown(3)
-			m.syncViewport()
 			m.viewport.SetContent(m.renderList())
+			m.syncViewport()
+			return m, nil
 		case tea.MouseLeft:
 			// Click to select row (Y is relative to viewport)
 			clickedRow := m.viewport.YOffset + msg.Y
 			if clickedRow >= 0 && clickedRow < len(m.commits) {
 				m.cursorTo(clickedRow)
 				m.viewport.SetContent(m.renderList())
+				m.syncViewport()
 			}
+			return m, nil
 		}
 	}
 
@@ -161,16 +167,29 @@ func (m *Model) cursorTo(n int) {
 	m.cursor = clamp(n, 0, len(m.commits)-1)
 }
 
-// syncViewport keeps cursor visible in viewport
+// syncViewport keeps cursor in the middle zone when scrolling
 func (m *Model) syncViewport() {
-	// If cursor above visible area, scroll up
-	if m.cursor < m.viewport.YOffset {
-		m.viewport.SetYOffset(m.cursor)
+	offset := m.viewport.YOffset
+	middle := m.height / 2
+
+	// Scroll up: only if cursor goes above visible area
+	if m.cursor < offset {
+		offset = m.cursor
 	}
-	// If cursor below visible area, scroll down
-	if m.cursor >= m.viewport.YOffset+m.height {
-		m.viewport.SetYOffset(m.cursor - m.height + 1)
+
+	// Scroll down: keep cursor in upper half once it passes middle
+	if m.cursor > offset+middle {
+		offset = m.cursor - middle
 	}
+
+	// Clamp to valid range
+	maxOffset := len(m.commits) - m.height
+	if maxOffset < 0 {
+		maxOffset = 0
+	}
+	offset = clamp(offset, 0, maxOffset)
+
+	m.viewport.SetYOffset(offset)
 }
 
 // SelectedCommit returns the currently selected commit
