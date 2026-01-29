@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"os"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/nogo/gitree/internal/git"
+	"github.com/nogo/gitree/internal/tui"
 )
 
 func main() {
@@ -14,6 +16,12 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("Loaded %d commits, %d branches\n",
-		len(repo.Commits), len(repo.Branches))
+
+	model := tui.NewModel(repo)
+	p := tea.NewProgram(model, tea.WithAltScreen())
+
+	if _, err := p.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 }
