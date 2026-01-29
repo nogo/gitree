@@ -3,28 +3,21 @@ package graph
 import (
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/nogo/gitree/internal/domain"
 )
 
-// Unicode characters for graph rendering
-const (
-	NodeFilled  = "●"
-	NodeHollow  = "○"
-	LineVert    = "│"
-	LineHoriz   = "─"
-	MergeRight  = "╯"
-	BranchRight = "╮"
-)
-
+// Renderer handles graph visualization for commit lists
 type Renderer struct {
 	commits    []domain.Commit
 	branches   []domain.Branch
 	head       string
 	colors     *ColorPalette
 	branchTips map[string]bool
+	layout     *GraphLayout
+	rowRender  *RowRenderer
 }
 
+// NewRenderer creates a graph renderer for the given commits
 func NewRenderer(commits []domain.Commit, branches []domain.Branch, head string) *Renderer {
 	// Build branch tips lookup
 	tips := make(map[string]bool)
@@ -32,48 +25,33 @@ func NewRenderer(commits []domain.Commit, branches []domain.Branch, head string)
 		tips[b.HeadHash] = true
 	}
 
+	// Build the DAG layout
+	layout := BuildLayout(commits)
+	colors := NewColorPalette()
+
 	return &Renderer{
 		commits:    commits,
 		branches:   branches,
 		head:       head,
-		colors:     NewColorPalette(),
+		colors:     colors,
 		branchTips: tips,
+		layout:     layout,
+		rowRender:  NewRowRenderer(layout, colors),
 	}
 }
 
-// RenderGraphCell returns the graph portion for commit at index (always 5 display chars)
+// Width returns the display width of the graph column
+func (r *Renderer) Width() int {
+	// Each lane takes 2 chars (symbol + connector/space)
+	return r.layout.MaxLanes * 2
+}
+
+// RenderGraphCell returns the graph portion for commit at index
 func (r *Renderer) RenderGraphCell(i int) string {
-	c := r.commits[i]
-
-	// Determine node character
-	node := NodeFilled
-	if r.isHead(c.Hash) || r.isBranchTip(c.Hash) {
-		node = NodeHollow
+	if i < 0 || i >= len(r.commits) {
+		return strings.Repeat(" ", r.Width())
 	}
-
-	// Determine if this is a merge commit
-	hasMultipleParents := len(c.Parents) > 1
-
-	// Get color for this commit
-	color := r.colorForCommit(c)
-	nodeStr := color.Render(node)
-
-	// Check if there's continuation line below (not last commit, has parent)
-	hasLineBelow := i < len(r.commits)-1 && len(c.Parents) > 0
-
-	// Simple rendering based on commit type (all cases = 5 display chars)
-	if hasMultipleParents {
-		// Merge commit: ╯ + ● + 3 spaces = 5 chars
-		return color.Render(MergeRight) + nodeStr + "   "
-	}
-
-	if hasLineBelow && r.hasSideBranch(i) {
-		// Commit with parallel branch: ● + space + │ + 2 spaces = 5 chars
-		return nodeStr + " " + color.Render(LineVert) + "  "
-	}
-
-	// Default: 2 spaces + ● + 2 spaces = 5 chars
-	return "  " + nodeStr + "  "
+	return r.rowRender.RenderRow(i)
 }
 
 // RenderBranchBadges returns styled branch labels for commit
@@ -103,31 +81,4 @@ func (r *Renderer) isHead(hash string) bool {
 
 func (r *Renderer) isBranchTip(hash string) bool {
 	return r.branchTips[hash]
-}
-
-func (r *Renderer) childCount(hash string) int {
-	count := 0
-	for _, c := range r.commits {
-		for _, parent := range c.Parents {
-			if parent == hash || strings.HasPrefix(parent, hash) || strings.HasPrefix(hash, parent) {
-				count++
-			}
-		}
-	}
-	return count
-}
-
-func (r *Renderer) hasSideBranch(i int) bool {
-	// Check if this commit has multiple children (branch point)
-	if i >= len(r.commits) {
-		return false
-	}
-	return r.childCount(r.commits[i].Hash) > 1
-}
-
-func (r *Renderer) colorForCommit(c domain.Commit) lipgloss.Style {
-	if len(c.BranchRefs) > 0 {
-		return r.colors.ForBranch(c.BranchRefs[0])
-	}
-	return r.colors.Default()
 }

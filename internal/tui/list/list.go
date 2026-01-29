@@ -203,8 +203,9 @@ func (m Model) renderRow(i int, c domain.Commit) string {
 		cursor = "> "
 	}
 
-	// Graph cell from renderer (5 chars)
+	// Graph cell from renderer (dynamic width)
 	graphCell := m.graph.RenderGraphCell(i)
+	graphWidth := m.graph.Width()
 
 	// Branch badges
 	badges := m.graph.RenderBranchBadges(c)
@@ -220,9 +221,9 @@ func (m Model) renderRow(i int, c domain.Commit) string {
 
 	hash := c.ShortHash[:5]
 
-	// Message width: total - cursor(2) - graph(5) - space(1) - spacing(2) - author(10) - spacing(2) - date(10) - spacing(2) - hash(5)
-	// = width - 39
-	msgWidth := m.width - 39
+	// Message width: total - cursor(2) - graph(dynamic) - space(1) - spacing(2) - author(10) - spacing(2) - date(10) - spacing(2) - hash(5)
+	// = width - 34 - graphWidth
+	msgWidth := m.width - 34 - graphWidth
 	if msgWidth < 10 {
 		msgWidth = 10
 	}
