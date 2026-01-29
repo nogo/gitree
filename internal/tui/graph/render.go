@@ -28,7 +28,7 @@ func (r *RowRenderer) RenderRow(row int) string {
 	}
 
 	node := r.layout.Nodes[row]
-	activeLanes := r.computeActiveLanes(row)
+	activeLanes := r.layout.ActiveLanesAt(row)
 
 	// Build the graph string with fixed-width cells
 	// Format: [cell0][sep0][cell1][sep1]... where each cell is 1 char and each sep is 1 char
@@ -126,82 +126,6 @@ func (r *RowRenderer) getConnector(row, lane int, node *CommitNode) string {
 		return r.colorForLane(connectionLane).Render(string(CharHorizontal))
 	}
 	return " "
-}
-
-// computeActiveLanes determines which lanes are active at a given row
-func (r *RowRenderer) computeActiveLanes(row int) map[int]bool {
-	active := make(map[int]bool)
-
-	// A lane is active at this row if:
-	// 1. A commit at or before this row has a parent at or after this row in that lane
-	// 2. The lane was created by a fork and the target parent hasn't been reached yet
-
-	// Simple approach: trace from beginning
-	activeLanes := make(map[int]string) // lane -> target hash
-	var freeLanes []int
-
-	for i := 0; i <= row; i++ {
-		node := r.layout.Nodes[i]
-
-		// Find lanes targeting this node
-		var targetingLanes []int
-		for lane, hash := range activeLanes {
-			if hashMatch(hash, node.Hash) {
-				targetingLanes = append(targetingLanes, lane)
-			}
-		}
-		sortInts(targetingLanes)
-
-		// Assign lane
-		var assignedLane int
-		if len(targetingLanes) > 0 {
-			assignedLane = targetingLanes[0]
-			for _, lane := range targetingLanes[1:] {
-				delete(activeLanes, lane)
-				freeLanes = insertSorted(freeLanes, lane)
-			}
-		} else {
-			if len(freeLanes) > 0 {
-				assignedLane = freeLanes[0]
-				freeLanes = freeLanes[1:]
-			} else {
-				assignedLane = len(activeLanes)
-			}
-		}
-
-		// Update for parents
-		if len(node.Parents) == 0 {
-			delete(activeLanes, assignedLane)
-			freeLanes = insertSorted(freeLanes, assignedLane)
-		} else {
-			activeLanes[assignedLane] = node.Parents[0]
-			for _, parentHash := range node.Parents[1:] {
-				var newLane int
-				if len(freeLanes) > 0 {
-					newLane = freeLanes[0]
-					freeLanes = freeLanes[1:]
-				} else {
-					maxLane := -1
-					for l := range activeLanes {
-						if l > maxLane {
-							maxLane = l
-						}
-					}
-					newLane = maxLane + 1
-				}
-				activeLanes[newLane] = parentHash
-			}
-		}
-	}
-
-	// Convert to bool map
-	for lane := range activeLanes {
-		active[lane] = true
-	}
-	// Include current node's lane
-	active[r.layout.Nodes[row].Lane] = true
-
-	return active
 }
 
 // colorForLane returns the style for a given lane

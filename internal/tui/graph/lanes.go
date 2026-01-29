@@ -15,9 +15,10 @@ type CommitNode struct {
 
 // GraphLayout holds the complete graph structure
 type GraphLayout struct {
-	Nodes      []*CommitNode
-	HashToNode map[string]*CommitNode
-	MaxLanes   int
+	Nodes        []*CommitNode
+	HashToNode   map[string]*CommitNode
+	MaxLanes     int
+	ActiveLanes  []map[int]bool // active lanes at each row (computed during assignLanes)
 }
 
 // BuildLayout constructs the graph layout from commits
@@ -34,7 +35,7 @@ func BuildLayout(commits []domain.Commit) *GraphLayout {
 	layout := &GraphLayout{
 		Nodes:      make([]*CommitNode, len(commits)),
 		HashToNode: make(map[string]*CommitNode, len(commits)),
-		MaxLanes:   1,
+		MaxLanes:   0, // Will grow as lanes are allocated
 	}
 
 	// Step 1: Create nodes and build hash lookup
@@ -88,7 +89,10 @@ func (l *GraphLayout) assignLanes() {
 	// freeLanes tracks lanes that can be reused (sorted for determinism)
 	var freeLanes []int
 
-	for _, node := range l.Nodes {
+	// Initialize storage for active lanes at each row
+	l.ActiveLanes = make([]map[int]bool, len(l.Nodes))
+
+	for i, node := range l.Nodes {
 		// Find which lanes are targeting this commit
 		var targetingLanes []int
 		for lane, targetHash := range activeLanes {
@@ -119,7 +123,8 @@ func (l *GraphLayout) assignLanes() {
 				assignedLane = freeLanes[0]
 				freeLanes = freeLanes[1:]
 			} else {
-				assignedLane = len(activeLanes)
+				assignedLane = l.MaxLanes
+				l.MaxLanes++
 			}
 		}
 
@@ -158,6 +163,14 @@ func (l *GraphLayout) assignLanes() {
 				}
 			}
 		}
+
+		// Store active lanes for this row (copy the current state)
+		l.ActiveLanes[i] = make(map[int]bool)
+		for lane := range activeLanes {
+			l.ActiveLanes[i][lane] = true
+		}
+		// Also include the node's own lane
+		l.ActiveLanes[i][assignedLane] = true
 	}
 
 	// Ensure at least 1 lane
@@ -167,80 +180,12 @@ func (l *GraphLayout) assignLanes() {
 }
 
 // ActiveLanesAt returns which lanes are active at a given row
-// A lane is active if it has a target hash that appears at or after this row
+// Uses pre-computed values from assignLanes
 func (l *GraphLayout) ActiveLanesAt(row int) map[int]bool {
-	active := make(map[int]bool)
-
-	// Replay lane assignment up to this row
-	activeLanes := make(map[int]string)
-	var freeLanes []int
-
-	for i := 0; i <= row && i < len(l.Nodes); i++ {
-		node := l.Nodes[i]
-
-		// Find targeting lanes
-		var targetingLanes []int
-		for lane, targetHash := range activeLanes {
-			if hashMatch(targetHash, node.Hash) {
-				targetingLanes = append(targetingLanes, lane)
-			}
-		}
-		sortInts(targetingLanes)
-
-		var assignedLane int
-		if len(targetingLanes) > 0 {
-			assignedLane = targetingLanes[0]
-			for _, lane := range targetingLanes[1:] {
-				delete(activeLanes, lane)
-				freeLanes = insertSorted(freeLanes, lane)
-			}
-		} else {
-			if len(freeLanes) > 0 {
-				assignedLane = freeLanes[0]
-				freeLanes = freeLanes[1:]
-			} else {
-				assignedLane = len(activeLanes)
-			}
-		}
-
-		if len(node.Parents) == 0 {
-			delete(activeLanes, assignedLane)
-			freeLanes = insertSorted(freeLanes, assignedLane)
-		} else {
-			activeLanes[assignedLane] = node.Parents[0]
-			for _, parentHash := range node.Parents[1:] {
-				var newLane int
-				if len(freeLanes) > 0 {
-					newLane = freeLanes[0]
-					freeLanes = freeLanes[1:]
-				} else {
-					newLane = l.maxLaneUsed(activeLanes) + 1
-				}
-				activeLanes[newLane] = parentHash
-			}
-		}
+	if row < 0 || row >= len(l.ActiveLanes) {
+		return make(map[int]bool)
 	}
-
-	// Convert to bool map
-	for lane := range activeLanes {
-		active[lane] = true
-	}
-	// Also include the current node's lane
-	if row < len(l.Nodes) {
-		active[l.Nodes[row].Lane] = true
-	}
-
-	return active
-}
-
-func (l *GraphLayout) maxLaneUsed(lanes map[int]string) int {
-	max := -1
-	for lane := range lanes {
-		if lane > max {
-			max = lane
-		}
-	}
-	return max
+	return l.ActiveLanes[row]
 }
 
 // hashMatch checks if two hashes match (handling short hash prefixes)

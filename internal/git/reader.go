@@ -1,6 +1,7 @@
 package git
 
 import (
+	"sort"
 	"strings"
 
 	"github.com/go-git/go-git/v5"
@@ -131,7 +132,7 @@ func (r *Reader) loadCommitsFromRepo(repo *git.Repository, limit int) ([]domain.
 				ShortHash:   hash[:7],
 				Author:      c.Author.Name,
 				Email:       c.Author.Email,
-				Date:        c.Author.When,
+				Date:        c.Committer.When, // Use committer date for proper ordering
 				Message:     firstLine(c.Message),
 				FullMessage: c.Message,
 				Parents:     parents,
@@ -155,11 +156,9 @@ func (r *Reader) loadCommitsFromRepo(repo *git.Repository, limit int) ([]domain.
 
 // sortCommitsByDate sorts commits by date descending (newest first)
 func sortCommitsByDate(commits []domain.Commit) {
-	for i := 1; i < len(commits); i++ {
-		for j := i; j > 0 && commits[j].Date.After(commits[j-1].Date); j-- {
-			commits[j], commits[j-1] = commits[j-1], commits[j]
-		}
-	}
+	sort.Slice(commits, func(i, j int) bool {
+		return commits[i].Date.After(commits[j].Date)
+	})
 }
 
 func (r *Reader) LoadBranches(path string) ([]domain.Branch, error) {
