@@ -205,6 +205,14 @@ func (m Model) CommitCount() int {
 	return len(m.commits)
 }
 
+// GraphWidth returns the current graph column width
+func (m Model) GraphWidth() int {
+	if m.graph == nil {
+		return 2 // minimum
+	}
+	return m.graph.Width()
+}
+
 func (m Model) renderList() string {
 	var rows []string
 	for i, c := range m.commits {
@@ -230,19 +238,20 @@ func (m Model) renderRow(i int, c domain.Commit) string {
 	badges := m.graph.RenderBranchBadges(c)
 
 	// Fixed width columns (rune-aware padding)
-	authorTrunc := truncate(c.Author, 10)
+	authorWidth := 12
+	authorTrunc := truncate(c.Author, authorWidth)
 	authorLen := len([]rune(authorTrunc))
-	author := strings.Repeat(" ", 10-authorLen) + authorTrunc // right-align
+	author := strings.Repeat(" ", authorWidth-authorLen) + authorTrunc // right-align
 
 	dateStr := formatRelativeTime(c.Date)
 	dateLen := len(dateStr)
 	date := strings.Repeat(" ", 10-dateLen) + dateStr // right-align
 
-	hash := c.ShortHash[:5]
+	hash := c.ShortHash // full 7 chars
 
-	// Message width: total - cursor(2) - graph(dynamic) - space(1) - spacing(2) - author(10) - spacing(2) - date(10) - spacing(2) - hash(5)
-	// = width - 34 - graphWidth
-	msgWidth := m.width - 34 - graphWidth
+	// Message width: total - cursor(2) - graph(dynamic) - space(1) - spacing(2) - author(12) - spacing(2) - date(10) - spacing(2) - hash(7)
+	// = width - 38 - graphWidth
+	msgWidth := m.width - 38 - graphWidth
 	if msgWidth < 10 {
 		msgWidth = 10
 	}

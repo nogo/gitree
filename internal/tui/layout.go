@@ -56,16 +56,20 @@ func (m Model) renderSeparator() string {
 }
 
 func (m Model) renderColumnHeaders() string {
-	// Match column layout from list: cursor(2) + graph(5) + space(1) + message(flex) + space(2) + author(10) + space(2) + date(10) + space(2) + hash(5)
-	// Total fixed: 2 + 5 + 1 + 2 + 10 + 2 + 10 + 2 + 5 = 39
-	msgWidth := m.width - 39
+	// Get actual graph width from list
+	graphWidth := m.list.GraphWidth()
+
+	// Match column layout from list: cursor(2) + graph(dynamic) + space(1) + message(flex) + spacing(2) + author(12) + spacing(2) + date(10) + spacing(2) + hash(7)
+	// Total fixed: 2 + graphWidth + 1 + 2 + 12 + 2 + 10 + 2 + 7 = 38 + graphWidth
+	msgWidth := m.width - 38 - graphWidth
 	if msgWidth < 10 {
 		msgWidth = 10
 	}
 
-	// 8 spaces = cursor(2) + graph(5) + space(1)
-	header := fmt.Sprintf("        %-*s  %10s  %10s  %5s",
-		msgWidth, "Message", "Author", "Date", "Hash")
+	// Prefix: cursor(2) + graph(graphWidth) + space(1)
+	prefix := strings.Repeat(" ", 2+graphWidth+1)
+	header := fmt.Sprintf("%s%-*s  %12s  %10s  %7s",
+		prefix, msgWidth, "Message", "Author", "Date", "Hash")
 
 	return ColumnHeaderStyle.Render(header)
 }
