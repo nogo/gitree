@@ -21,7 +21,7 @@ func NewRowRenderer(layout *GraphLayout, colors *ColorPalette) *RowRenderer {
 }
 
 // RenderRow produces the graph string for a given row index
-// Each lane takes 2 characters (symbol + space), total width = MaxLanes * 2
+// Each lane takes 2 characters (symbol + connector/space), total width = MaxLanes * 2
 func (r *RowRenderer) RenderRow(row int) string {
 	if row < 0 || row >= len(r.layout.Nodes) {
 		return strings.Repeat(" ", r.layout.MaxLanes*2)
@@ -30,80 +30,68 @@ func (r *RowRenderer) RenderRow(row int) string {
 	node := r.layout.Nodes[row]
 	activeLanes := r.computeActiveLanes(row)
 
-	// Build cells for each lane position
-	cells := make([]string, r.layout.MaxLanes)
-
-	// First pass: render base cells (nodes and passthroughs)
-	for lane := 0; lane < r.layout.MaxLanes; lane++ {
-		if lane == node.Lane {
-			// This is where the commit node goes
-			cells[lane] = r.colorForLane(lane).Render(string(CharNode))
-		} else if activeLanes[lane] {
-			// Lane passes through this row
-			cells[lane] = r.colorForLane(lane).Render(string(CharVertical))
-		} else {
-			cells[lane] = " "
-		}
-	}
-
-	// Second pass: handle merge connections (lanes coming INTO this node from right)
-	// MergeFrom contains lanes that were targeting this commit and merge here
-	if len(node.MergeFrom) > 0 {
-		r.renderMergeConnections(cells, node, activeLanes)
-	}
-
-	// Third pass: handle fork connections (new lanes starting FROM this node going right)
-	// ForkTo contains new lanes allocated for non-primary parents
-	if len(node.ForkTo) > 0 {
-		r.renderForkConnections(cells, node, activeLanes)
-	}
-
-	// Join cells with spaces between
+	// Build the graph string with fixed-width cells
+	// Format: [cell0][sep0][cell1][sep1]... where each cell is 1 char and each sep is 1 char
 	var result strings.Builder
-	for i, cell := range cells {
-		result.WriteString(cell)
-		if i < len(cells)-1 {
-			// Check if we need horizontal connector between this cell and next
-			connector := r.getConnector(row, i, node)
+
+	for lane := 0; lane < r.layout.MaxLanes; lane++ {
+		// Render the cell for this lane
+		var cellChar rune
+		var cellColor int
+
+		if lane == node.Lane {
+			cellChar = CharNode
+			cellColor = lane
+		} else if activeLanes[lane] {
+			cellChar = CharVertical
+			cellColor = lane
+		} else {
+			cellChar = CharSpace
+			cellColor = -1 // no color
+		}
+
+		// Check for merge/fork connections that override the cell
+		for _, mergeLane := range node.MergeFrom {
+			if mergeLane == lane {
+				if mergeLane > node.Lane {
+					cellChar = CharCornerBR // ┘
+				} else {
+					cellChar = CharCornerBL // └
+				}
+				cellColor = lane
+			}
+		}
+		for _, forkLane := range node.ForkTo {
+			if forkLane == lane {
+				if forkLane > node.Lane {
+					cellChar = CharCornerTR // ┐
+				} else {
+					cellChar = CharCornerTL // ┌
+				}
+				cellColor = lane
+			}
+		}
+
+		// Write the cell
+		if cellColor >= 0 {
+			result.WriteString(r.colorForLane(cellColor).Render(string(cellChar)))
+		} else {
+			result.WriteRune(cellChar)
+		}
+
+		// Write separator (connector or space) - except after last lane
+		if lane < r.layout.MaxLanes-1 {
+			connector := r.getConnector(row, lane, node)
 			result.WriteString(connector)
 		}
 	}
 
-	// Pad to consistent width
-	rendered := result.String()
-	displayWidth := r.displayWidth(rendered)
-	targetWidth := r.layout.MaxLanes * 2
-	if displayWidth < targetWidth {
-		rendered += strings.Repeat(" ", targetWidth-displayWidth)
-	}
+	// Add trailing space for consistent width (MaxLanes * 2 total)
+	// We have MaxLanes cells + (MaxLanes-1) separators = 2*MaxLanes - 1 chars
+	// Add 1 space to make it 2*MaxLanes
+	result.WriteRune(' ')
 
-	return rendered
-}
-
-// renderMergeConnections handles visual connections for merges
-func (r *RowRenderer) renderMergeConnections(cells []string, node *CommitNode, activeLanes map[int]bool) {
-	for _, mergeLane := range node.MergeFrom {
-		if mergeLane > node.Lane {
-			// Merge coming from right - use ┘ at the merge lane
-			cells[mergeLane] = r.colorForLane(mergeLane).Render(string(CharCornerBR))
-		} else if mergeLane < node.Lane {
-			// Merge coming from left - use └ at the merge lane
-			cells[mergeLane] = r.colorForLane(mergeLane).Render(string(CharCornerBL))
-		}
-	}
-}
-
-// renderForkConnections handles visual connections for forks (new parent lanes)
-func (r *RowRenderer) renderForkConnections(cells []string, node *CommitNode, activeLanes map[int]bool) {
-	for _, forkLane := range node.ForkTo {
-		if forkLane > node.Lane {
-			// Fork going to right - use ┐ at the fork lane
-			cells[forkLane] = r.colorForLane(forkLane).Render(string(CharCornerTR))
-		} else if forkLane < node.Lane {
-			// Fork going to left - use ┌ at the fork lane
-			cells[forkLane] = r.colorForLane(forkLane).Render(string(CharCornerTL))
-		}
-	}
+	return result.String()
 }
 
 // getConnector returns the connector character between lane i and i+1

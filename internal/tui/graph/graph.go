@@ -3,6 +3,7 @@ package graph
 import (
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/nogo/gitree/internal/domain"
 )
 
@@ -55,24 +56,81 @@ func (r *Renderer) RenderGraphCell(i int) string {
 }
 
 // RenderBranchBadges returns styled branch labels for commit
+// Merges local and remote branches with same name (e.g., "main | origin")
 func (r *Renderer) RenderBranchBadges(c domain.Commit) string {
 	if len(c.BranchRefs) == 0 {
 		return ""
 	}
 
-	var badges []string
+	// Group branches by base name
+	type branchInfo struct {
+		hasLocal  bool
+		hasRemote bool
+		remotes   []string // remote names like "origin", "upstream"
+	}
+	groups := make(map[string]*branchInfo)
+
 	for _, ref := range c.BranchRefs {
-		style := r.badgeStyle(ref)
-		// Truncate long branch names (rune-aware)
-		name := ref
-		runes := []rune(name)
-		if len(runes) > 15 {
-			name = string(runes[:12]) + "…"
+		if strings.HasPrefix(ref, "origin/") {
+			baseName := strings.TrimPrefix(ref, "origin/")
+			if groups[baseName] == nil {
+				groups[baseName] = &branchInfo{}
+			}
+			groups[baseName].hasRemote = true
+			groups[baseName].remotes = append(groups[baseName].remotes, "origin")
+		} else if strings.Contains(ref, "/") {
+			// Other remotes like "upstream/main"
+			parts := strings.SplitN(ref, "/", 2)
+			if len(parts) == 2 {
+				remoteName, baseName := parts[0], parts[1]
+				if groups[baseName] == nil {
+					groups[baseName] = &branchInfo{}
+				}
+				groups[baseName].hasRemote = true
+				groups[baseName].remotes = append(groups[baseName].remotes, remoteName)
+			}
+		} else {
+			// Local branch
+			if groups[ref] == nil {
+				groups[ref] = &branchInfo{}
+			}
+			groups[ref].hasLocal = true
 		}
-		badges = append(badges, style.Render(name))
 	}
 
+	// Build badges
+	var badges []string
+	for baseName, info := range groups {
+		var label string
+		if info.hasLocal && info.hasRemote {
+			// Merge: "main | origin" or "main | origin, upstream"
+			label = baseName + " | " + strings.Join(info.remotes, ", ")
+		} else if info.hasLocal {
+			label = baseName
+		} else {
+			// Remote only
+			label = info.remotes[0] + "/" + baseName
+		}
+
+		style := r.badgeStyleForGroup(baseName, info.hasLocal, info.hasRemote)
+		badges = append(badges, style.Render(label))
+	}
+
+	if len(badges) == 0 {
+		return ""
+	}
 	return strings.Join(badges, " ") + " "
+}
+
+// badgeStyleForGroup returns style based on branch type
+func (r *Renderer) badgeStyleForGroup(baseName string, hasLocal, hasRemote bool) lipgloss.Style {
+	if hasLocal {
+		// Use local branch color
+		color := r.colors.ForBranch(baseName)
+		return BadgeStyle.Background(color.GetForeground()).Foreground(lipgloss.Color("0"))
+	}
+	// Remote only
+	return OriginBadgeStyle
 }
 
 func (r *Renderer) isHead(hash string) bool {
