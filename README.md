@@ -15,11 +15,29 @@ A terminal-based git history visualization tool with live updates.
 
 ## Installation
 
+### Download Binary
+
+Download the latest release from the [releases page](https://github.com/nogo/gitree/releases).
+
+```bash
+# Example for macOS Apple Silicon
+tar -xzf gitree_0.2.0_darwin_arm64.tar.gz
+sudo mv gitree /usr/local/bin/
+```
+
+**macOS users:** If you see "cannot be opened because it is from an unidentified developer", run:
+
+```bash
+xattr -d com.apple.quarantine /usr/local/bin/gitree
+```
+
+### Go Install
+
 ```bash
 go install github.com/nogo/gitree/cmd/gitree@latest
 ```
 
-Or build from source:
+### Build from Source
 
 ```bash
 git clone https://github.com/nogo/gitree.git
