@@ -181,6 +181,11 @@ func (m Model) SelectedCommit() *domain.Commit {
 	return nil
 }
 
+// CommitCount returns the number of commits in the list
+func (m Model) CommitCount() int {
+	return len(m.commits)
+}
+
 func (m Model) renderList() string {
 	var rows []string
 	for i, c := range m.commits {
@@ -192,46 +197,61 @@ func (m Model) renderList() string {
 func (m Model) renderRow(i int, c domain.Commit) string {
 	selected := i == m.cursor
 
-	// Cursor indicator
+	// Cursor indicator (2 chars)
 	cursor := "  "
 	if selected {
 		cursor = "> "
 	}
 
-	// Graph cell from renderer
+	// Graph cell from renderer (5 chars)
 	graphCell := m.graph.RenderGraphCell(i)
 
 	// Branch badges
 	badges := m.graph.RenderBranchBadges(c)
 
-	// Fixed width columns
-	hash := truncate(c.ShortHash, 7)
-	author := truncate(c.Author, 12)
-	date := formatRelativeTime(c.Date)
+	// Fixed width columns (rune-aware padding)
+	authorTrunc := truncate(c.Author, 10)
+	authorLen := len([]rune(authorTrunc))
+	author := strings.Repeat(" ", 10-authorLen) + authorTrunc // right-align
 
-	// Message with badges prepended
-	msgWidth := m.width - 52 // Account for cursor indicator
+	dateStr := formatRelativeTime(c.Date)
+	dateLen := len(dateStr)
+	date := strings.Repeat(" ", 10-dateLen) + dateStr // right-align
+
+	hash := c.ShortHash[:5]
+
+	// Message width: total - cursor(2) - graph(5) - space(1) - spacing(2) - author(10) - spacing(2) - date(10) - spacing(2) - hash(5)
+	// = width - 39
+	msgWidth := m.width - 39
 	if msgWidth < 10 {
 		msgWidth = 10
 	}
+
 	// Account for badge width in message truncation
-	badgeLen := len(stripAnsi(badges))
+	badgeLen := runeLen(badges)
 	msgAvail := msgWidth - badgeLen
 	if msgAvail < 5 {
 		msgAvail = 5
 	}
 	msg := badges + truncate(c.Message, msgAvail)
 
+	// Pad message to fixed width for alignment
+	msgLen := runeLen(msg)
+	msgDisplay := msg + strings.Repeat(" ", msgWidth-msgLen)
+	if msgLen > msgWidth {
+		msgDisplay = msg
+	}
+
 	// Apply styles to individual parts (non-selected rows)
 	if !selected {
 		hash = HashStyle.Render(hash)
 		author = AuthorStyle.Render(author)
 		date = DateStyle.Render(date)
-		msg = MessageStyle.Render(msg)
 	}
 
-	row := fmt.Sprintf("%s%s %s  %-12s  %-8s  %s",
-		cursor, graphCell, hash, author, date, msg)
+	// New column order: cursor | graph | message | author | date | hash
+	row := fmt.Sprintf("%s%s %s  %s  %s  %s",
+		cursor, graphCell, msgDisplay, author, date, hash)
 
 	if selected {
 		return SelectedRowStyle.Width(m.width).Render(row)
@@ -239,14 +259,36 @@ func (m Model) renderRow(i int, c domain.Commit) string {
 	return row
 }
 
+// truncate truncates a string to max runes, adding ellipsis if needed
 func truncate(s string, max int) string {
-	if len(s) <= max {
+	runes := []rune(s)
+	if len(runes) <= max {
 		return s
 	}
-	if max <= 3 {
-		return s[:max]
+	if max <= 1 {
+		return string(runes[:max])
 	}
-	return s[:max-3] + "..."
+	return string(runes[:max-1]) + "…"
+}
+
+// runeLen returns the display width of a string (rune count, excluding ANSI codes)
+func runeLen(s string) int {
+	count := 0
+	inEscape := false
+	for _, r := range s {
+		if r == '\x1b' {
+			inEscape = true
+			continue
+		}
+		if inEscape {
+			if r == 'm' {
+				inEscape = false
+			}
+			continue
+		}
+		count++
+	}
+	return count
 }
 
 // stripAnsi removes ANSI escape codes for length calculation

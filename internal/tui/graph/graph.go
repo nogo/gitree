@@ -41,7 +41,7 @@ func NewRenderer(commits []domain.Commit, branches []domain.Branch, head string)
 	}
 }
 
-// RenderGraphCell returns the graph portion for commit at index
+// RenderGraphCell returns the graph portion for commit at index (always 5 display chars)
 func (r *Renderer) RenderGraphCell(i int) string {
 	c := r.commits[i]
 
@@ -61,17 +61,18 @@ func (r *Renderer) RenderGraphCell(i int) string {
 	// Check if there's continuation line below (not last commit, has parent)
 	hasLineBelow := i < len(r.commits)-1 && len(c.Parents) > 0
 
-	// Simple rendering based on commit type
+	// Simple rendering based on commit type (all cases = 5 display chars)
 	if hasMultipleParents {
-		// Merge commit
-		return color.Render(MergeRight) + nodeStr + "  "
+		// Merge commit: ╯ + ● + 3 spaces = 5 chars
+		return color.Render(MergeRight) + nodeStr + "   "
 	}
 
 	if hasLineBelow && r.hasSideBranch(i) {
-		// Commit with parallel branch
-		return nodeStr + " " + color.Render(LineVert) + " "
+		// Commit with parallel branch: ● + space + │ + 2 spaces = 5 chars
+		return nodeStr + " " + color.Render(LineVert) + "  "
 	}
 
+	// Default: 2 spaces + ● + 2 spaces = 5 chars
 	return "  " + nodeStr + "  "
 }
 
@@ -84,10 +85,11 @@ func (r *Renderer) RenderBranchBadges(c domain.Commit) string {
 	var badges []string
 	for _, ref := range c.BranchRefs {
 		style := r.badgeStyle(ref)
-		// Truncate long branch names
+		// Truncate long branch names (rune-aware)
 		name := ref
-		if len(name) > 15 {
-			name = name[:12] + "..."
+		runes := []rune(name)
+		if len(runes) > 15 {
+			name = string(runes[:12]) + "…"
 		}
 		badges = append(badges, style.Render(name))
 	}

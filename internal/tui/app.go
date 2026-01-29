@@ -149,8 +149,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.ready = true
-		// Header and footer each take 1 line
-		contentHeight := msg.Height - 2
+		// Header(1) + separator(1) + column headers(1) + separator(1) + footer(1) = 5 lines
+		contentHeight := msg.Height - 5
 		if contentHeight < 1 {
 			contentHeight = 1
 		}
@@ -277,4 +277,14 @@ func (m Model) FilteredBranchCount() int {
 // TotalBranchCount returns the total number of branches
 func (m Model) TotalBranchCount() int {
 	return len(m.repo.Branches)
+}
+
+// FilteredCommitCount returns the number of commits currently displayed
+func (m Model) FilteredCommitCount() int {
+	return m.list.CommitCount()
+}
+
+// TotalCommitCount returns the total number of commits in the repo
+func (m Model) TotalCommitCount() int {
+	return len(m.repo.Commits)
 }
