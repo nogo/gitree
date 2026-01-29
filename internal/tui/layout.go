@@ -1,8 +1,6 @@
 package tui
 
 import (
-	"fmt"
-
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -35,9 +33,9 @@ func (m Model) renderHeader() string {
 }
 
 func (m Model) renderContent() string {
-	return fmt.Sprintf("Loaded %d commits", len(m.repo.Commits))
+	return m.list.View()
 }
 
 func (m Model) renderFooter() string {
-	return FooterStyle.Width(m.width).Render("[q]uit")
+	return FooterStyle.Width(m.width).Render("[j/k] navigate  [g/G] top/bottom  [q]uit")
 }
