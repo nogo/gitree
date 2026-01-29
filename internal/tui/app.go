@@ -18,7 +18,7 @@ type Model struct {
 func NewModel(repo *domain.Repository) Model {
 	return Model{
 		repo: repo,
-		list: list.New(repo.Commits),
+		list: list.New(repo),
 	}
 }
 

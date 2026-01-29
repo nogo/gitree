@@ -7,10 +7,12 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/nogo/gitree/internal/domain"
+	"github.com/nogo/gitree/internal/tui/graph"
 )
 
 type Model struct {
 	commits  []domain.Commit
+	graph    *graph.Renderer
 	viewport viewport.Model
 	cursor   int
 	width    int
@@ -18,8 +20,11 @@ type Model struct {
 	ready    bool
 }
 
-func New(commits []domain.Commit) Model {
-	return Model{commits: commits}
+func New(repo *domain.Repository) Model {
+	return Model{
+		commits: repo.Commits,
+		graph:   graph.NewRenderer(repo.Commits, repo.Branches, repo.HEAD),
+	}
 }
 
 func (m Model) Init() tea.Cmd { return nil }
@@ -103,16 +108,29 @@ func (m Model) renderList() string {
 func (m Model) renderRow(i int, c domain.Commit) string {
 	selected := i == m.cursor
 
-	// Columns with fixed widths
-	graph := "  ●  " // placeholder, Phase 4 replaces
+	// Graph cell from renderer
+	graphCell := m.graph.RenderGraphCell(i)
+
+	// Branch badges
+	badges := m.graph.RenderBranchBadges(c)
+
+	// Fixed width columns
 	hash := truncate(c.ShortHash, 7)
 	author := truncate(c.Author, 12)
 	date := formatRelativeTime(c.Date)
-	msgWidth := m.width - 45
+
+	// Message with badges prepended
+	msgWidth := m.width - 50
 	if msgWidth < 10 {
 		msgWidth = 10
 	}
-	msg := truncate(c.Message, msgWidth)
+	// Account for badge width in message truncation
+	badgeLen := len(stripAnsi(badges))
+	msgAvail := msgWidth - badgeLen
+	if msgAvail < 5 {
+		msgAvail = 5
+	}
+	msg := badges + truncate(c.Message, msgAvail)
 
 	// Apply styles to individual parts (non-selected rows)
 	if !selected {
@@ -123,7 +141,7 @@ func (m Model) renderRow(i int, c domain.Commit) string {
 	}
 
 	row := fmt.Sprintf("%s %s  %-12s  %-8s  %s",
-		graph, hash, author, date, msg)
+		graphCell, hash, author, date, msg)
 
 	if selected {
 		return SelectedRowStyle.Width(m.width).Render(row)
@@ -139,4 +157,24 @@ func truncate(s string, max int) string {
 		return s[:max]
 	}
 	return s[:max-3] + "..."
+}
+
+// stripAnsi removes ANSI escape codes for length calculation
+func stripAnsi(s string) string {
+	var result strings.Builder
+	inEscape := false
+	for _, r := range s {
+		if r == '\x1b' {
+			inEscape = true
+			continue
+		}
+		if inEscape {
+			if r == 'm' {
+				inEscape = false
+			}
+			continue
+		}
+		result.WriteRune(r)
+	}
+	return result.String()
 }
