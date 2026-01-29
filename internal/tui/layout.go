@@ -37,5 +37,5 @@ func (m Model) renderContent() string {
 }
 
 func (m Model) renderFooter() string {
-	return FooterStyle.Width(m.width).Render("[j/k] navigate  [g/G] top/bottom  [q]uit")
+	return FooterStyle.Width(m.width).Render("[j/k] navigate  [^d/^u] page  [g/G] top/bottom  [q]uit")
 }

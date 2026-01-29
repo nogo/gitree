@@ -46,24 +46,47 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
+		// Vertical movement
 		case "j", "down":
-			m.cursorDown()
-			m.viewport.SetContent(m.renderList())
-			m.ensureCursorVisible()
+			m.cursorDown(1)
 		case "k", "up":
-			m.cursorUp()
+			m.cursorUp(1)
+
+		// Page movement
+		case "ctrl+d", "pgdown":
+			m.cursorDown(m.height / 2)
+		case "ctrl+u", "pgup":
+			m.cursorUp(m.height / 2)
+
+		// Jump to edges
+		case "g", "home":
+			m.cursorTo(0)
+		case "G", "end":
+			m.cursorTo(len(m.commits) - 1)
+		}
+		m.syncViewport()
+		m.viewport.SetContent(m.renderList())
+
+	case tea.MouseMsg:
+		switch msg.Type {
+		case tea.MouseWheelUp:
+			m.cursorUp(3)
+			m.syncViewport()
 			m.viewport.SetContent(m.renderList())
-			m.ensureCursorVisible()
-		case "g":
-			m.cursor = 0
+		case tea.MouseWheelDown:
+			m.cursorDown(3)
+			m.syncViewport()
 			m.viewport.SetContent(m.renderList())
-			m.viewport.GotoTop()
-		case "G":
-			m.cursor = len(m.commits) - 1
-			m.viewport.SetContent(m.renderList())
-			m.viewport.GotoBottom()
+		case tea.MouseLeft:
+			// Click to select row (Y is relative to viewport)
+			clickedRow := m.viewport.YOffset + msg.Y
+			if clickedRow >= 0 && clickedRow < len(m.commits) {
+				m.cursorTo(clickedRow)
+				m.viewport.SetContent(m.renderList())
+			}
 		}
 	}
+
 	var cmd tea.Cmd
 	m.viewport, cmd = m.viewport.Update(msg)
 	return m, cmd
@@ -76,23 +99,26 @@ func (m Model) View() string {
 	return m.viewport.View()
 }
 
-func (m *Model) cursorUp() {
-	if m.cursor > 0 {
-		m.cursor--
-	}
+func (m *Model) cursorUp(n int) {
+	m.cursor = max(0, m.cursor-n)
 }
 
-func (m *Model) cursorDown() {
-	if m.cursor < len(m.commits)-1 {
-		m.cursor++
-	}
+func (m *Model) cursorDown(n int) {
+	m.cursor = min(len(m.commits)-1, m.cursor+n)
 }
 
-func (m *Model) ensureCursorVisible() {
-	// Ensure cursor row is visible in viewport
+func (m *Model) cursorTo(n int) {
+	m.cursor = clamp(n, 0, len(m.commits)-1)
+}
+
+// syncViewport keeps cursor visible in viewport
+func (m *Model) syncViewport() {
+	// If cursor above visible area, scroll up
 	if m.cursor < m.viewport.YOffset {
 		m.viewport.SetYOffset(m.cursor)
-	} else if m.cursor >= m.viewport.YOffset+m.height {
+	}
+	// If cursor below visible area, scroll down
+	if m.cursor >= m.viewport.YOffset+m.height {
 		m.viewport.SetYOffset(m.cursor - m.height + 1)
 	}
 }
@@ -108,6 +134,12 @@ func (m Model) renderList() string {
 func (m Model) renderRow(i int, c domain.Commit) string {
 	selected := i == m.cursor
 
+	// Cursor indicator
+	cursor := "  "
+	if selected {
+		cursor = "> "
+	}
+
 	// Graph cell from renderer
 	graphCell := m.graph.RenderGraphCell(i)
 
@@ -120,7 +152,7 @@ func (m Model) renderRow(i int, c domain.Commit) string {
 	date := formatRelativeTime(c.Date)
 
 	// Message with badges prepended
-	msgWidth := m.width - 50
+	msgWidth := m.width - 52 // Account for cursor indicator
 	if msgWidth < 10 {
 		msgWidth = 10
 	}
@@ -140,8 +172,8 @@ func (m Model) renderRow(i int, c domain.Commit) string {
 		msg = MessageStyle.Render(msg)
 	}
 
-	row := fmt.Sprintf("%s %s  %-12s  %-8s  %s",
-		graphCell, hash, author, date, msg)
+	row := fmt.Sprintf("%s%s %s  %-12s  %-8s  %s",
+		cursor, graphCell, hash, author, date, msg)
 
 	if selected {
 		return SelectedRowStyle.Width(m.width).Render(row)
@@ -177,4 +209,14 @@ func stripAnsi(s string) string {
 		result.WriteRune(r)
 	}
 	return result.String()
+}
+
+func clamp(v, lo, hi int) int {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
 }
