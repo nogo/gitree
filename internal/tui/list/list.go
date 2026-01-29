@@ -123,6 +123,14 @@ func (m *Model) syncViewport() {
 	}
 }
 
+// SelectedCommit returns the currently selected commit
+func (m Model) SelectedCommit() *domain.Commit {
+	if m.cursor >= 0 && m.cursor < len(m.commits) {
+		return &m.commits[m.cursor]
+	}
+	return nil
+}
+
 func (m Model) renderList() string {
 	var rows []string
 	for i, c := range m.commits {
