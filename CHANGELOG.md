@@ -1,55 +1,38 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+## 2026-01-29
 
-## [Unreleased]
+### Foundation
+- Set up Go project structure with domain types (Commit, Branch, Repository)
+- Implemented git layer using go-git for loading commits and branches
+- Created TUI shell with bubbletea and Elm architecture
 
-### Added
-- Multi-lane DAG graph visualization with proper merge/fork connections
-- Topological sort for correct commit ordering
-- Lane assignment algorithm for branch visualization
-- Column headers with proper alignment
+### Commit List
+- Added scrollable commit list with virtual viewport
+- Implemented graph rendering with branch badges and 6-color palette
+- Added Vim-style navigation (j/k, g/G) and mouse support
 
-### Fixed
-- Column header alignment and increased column widths
-- Lane assignment for rebased/cherry-picked commits
-- Graph alignment and merge branch labels
-- Viewport scrolling to keep cursor centered
+### Views & Overlays
+- Added commit detail overlay showing full hash, author, date, message, parents, refs
+- Added branch filter modal with checkbox list and reachability-based filtering
 
-## [0.1.0] - 2025-01-29
-
-Initial MVP release.
-
-### Added
-
-#### Core
-- Commit graph visualization with color-coded branches
-- Branch visualization with inline badges (`[main]`, `[origin/main]`)
-- 6-color palette rotation for branch differentiation
-
-#### Navigation
-- Vim-style navigation (`j`/`k`, `g`/`G`)
-- Arrow keys and Page Up/Down support
-- Mouse wheel scrolling and click-to-select
-- Cursor indicator for selected commit
-
-#### Views
-- Commit list with virtual scrolling via viewport
-- Commit detail overlay showing full hash, author, email, date, message, parents, and refs
-- Branch filter modal with checkbox list
-
-#### Live Updates
-- File watcher on `.git/HEAD`, `refs/heads`, `refs/remotes`
-- 100ms debouncing for rapid changes
-- Graceful degradation if watcher fails
+### Live Updates
+- Implemented file watcher on `.git/HEAD` and refs directories
+- Added 100ms debounce for rapid changes
 - Visual indicator in footer (● watching / ○ not watching)
 
-#### Filtering
-- Branch filter with BFS parent walk for commit reachability
-- Filter persists after repository refresh
-- Clear filter with `c` key
+### Path Argument & UI Polish
+- Added support for `gitree [path]` to open any repository
+- Added column headers with proper alignment
+- Fixed UTF-8 rendering issues
 
-### Technical
-- Built with Go, bubbletea, lipgloss, go-git, fsnotify
-- Elm architecture for predictable state management
-- Alt screen mode for clean terminal experience
+### Graph Improvements
+- Replaced simple graph with multi-lane DAG visualization
+- Added lane assignment algorithm for proper branch layout
+- Implemented topological sort for correct commit ordering
+- Fixed lane assignment for rebased/cherry-picked commits
+- Improved merge branch label positioning
+
+### Documentation
+- Added README with installation, usage, and key bindings
+- Added this changelog
