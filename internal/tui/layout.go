@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"fmt"
+
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -37,5 +39,10 @@ func (m Model) renderContent() string {
 }
 
 func (m Model) renderFooter() string {
-	return FooterStyle.Width(m.width).Render("[j/k] navigate  [^d/^u] page  [g/G] top/bottom  [enter] details  [q]uit")
+	watchStatus := "○"
+	if m.watching {
+		watchStatus = "●"
+	}
+	hints := "[j/k] navigate  [^d/^u] page  [g/G] top/bottom  [enter] details  [q]uit"
+	return FooterStyle.Width(m.width).Render(fmt.Sprintf("%s  %s", watchStatus, hints))
 }

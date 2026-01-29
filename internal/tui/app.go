@@ -4,14 +4,19 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/nogo/gitree/internal/domain"
+	"github.com/nogo/gitree/internal/git"
 	"github.com/nogo/gitree/internal/tui/detail"
 	"github.com/nogo/gitree/internal/tui/list"
+	"github.com/nogo/gitree/internal/watcher"
 )
 
 type Model struct {
 	repo       *domain.Repository
+	repoPath   string
 	list       list.Model
 	detail     detail.Model
+	watcher    *watcher.Watcher
+	watching   bool
 	showDetail bool
 	width      int
 	height     int
@@ -19,20 +24,57 @@ type Model struct {
 	err        error
 }
 
-func NewModel(repo *domain.Repository) Model {
+func NewModel(repo *domain.Repository, repoPath string, w *watcher.Watcher) Model {
 	return Model{
-		repo:   repo,
-		list:   list.New(repo),
-		detail: detail.New(),
+		repo:     repo,
+		repoPath: repoPath,
+		list:     list.New(repo),
+		detail:   detail.New(),
+		watcher:  w,
+		watching: w != nil,
 	}
 }
 
 func (m Model) Init() tea.Cmd {
+	if m.watcher != nil {
+		return m.watchForChanges()
+	}
 	return nil
+}
+
+// watchForChanges returns a command that waits for watcher signal
+func (m Model) watchForChanges() tea.Cmd {
+	return func() tea.Msg {
+		<-m.watcher.Changes()
+		return RepoChangedMsg{}
+	}
+}
+
+// reloadRepo returns a command that reloads repository data
+func (m Model) reloadRepo() tea.Cmd {
+	return func() tea.Msg {
+		reader := git.NewReader()
+		repo, err := reader.LoadRepository(m.repoPath)
+		return RepoLoadedMsg{Repo: repo, Err: err}
+	}
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case RepoChangedMsg:
+		// Repo changed, trigger reload and re-arm watcher
+		return m, tea.Batch(
+			m.reloadRepo(),
+			m.watchForChanges(),
+		)
+
+	case RepoLoadedMsg:
+		if msg.Err == nil {
+			m.repo = msg.Repo
+			m.list.SetRepo(msg.Repo)
+		}
+		return m, nil
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "ctrl+c":
@@ -102,4 +144,9 @@ func (m Model) renderWithDetail() string {
 		lipgloss.Center, lipgloss.Center,
 		m.detail.View(),
 	)
+}
+
+// Watching returns whether the watcher is active
+func (m Model) Watching() bool {
+	return m.watching
 }

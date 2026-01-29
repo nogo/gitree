@@ -27,6 +27,32 @@ func New(repo *domain.Repository) Model {
 	}
 }
 
+// SetRepo updates the list with new repository data
+func (m *Model) SetRepo(repo *domain.Repository) {
+	// Preserve cursor position if possible
+	oldCursor := m.cursor
+	m.commits = repo.Commits
+	m.graph = graph.NewRenderer(repo.Commits, repo.Branches, repo.HEAD)
+
+	// Clamp cursor to new bounds
+	if m.cursor >= len(m.commits) {
+		m.cursor = len(m.commits) - 1
+	}
+	if m.cursor < 0 {
+		m.cursor = 0
+	}
+
+	// Keep same position if possible
+	if oldCursor < len(m.commits) {
+		m.cursor = oldCursor
+	}
+
+	// Update viewport content
+	if m.ready {
+		m.viewport.SetContent(m.renderList())
+	}
+}
+
 func (m Model) Init() tea.Cmd { return nil }
 
 func (m *Model) SetSize(w, h int) {
