@@ -53,6 +53,30 @@ func (m *Model) SetRepo(repo *domain.Repository) {
 	}
 }
 
+// SetFilteredCommits updates the list with filtered commits while using
+// the original repo's branches/HEAD for graph context
+func (m *Model) SetFilteredCommits(commits []domain.Commit, repo *domain.Repository) {
+	oldCursor := m.cursor
+	m.commits = commits
+	m.graph = graph.NewRenderer(commits, repo.Branches, repo.HEAD)
+
+	// Clamp cursor to new bounds
+	if m.cursor >= len(m.commits) {
+		m.cursor = len(m.commits) - 1
+	}
+	if m.cursor < 0 {
+		m.cursor = 0
+	}
+
+	if oldCursor < len(m.commits) {
+		m.cursor = oldCursor
+	}
+
+	if m.ready {
+		m.viewport.SetContent(m.renderList())
+	}
+}
+
 func (m Model) Init() tea.Cmd { return nil }
 
 func (m *Model) SetSize(w, h int) {

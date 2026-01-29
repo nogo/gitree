@@ -39,10 +39,35 @@ func (m Model) renderContent() string {
 }
 
 func (m Model) renderFooter() string {
+	var parts []string
+
+	// Watch status
 	watchStatus := "○"
 	if m.watching {
 		watchStatus = "●"
 	}
-	hints := "[j/k] navigate  [^d/^u] page  [g/G] top/bottom  [enter] details  [q]uit"
-	return FooterStyle.Width(m.width).Render(fmt.Sprintf("%s  %s", watchStatus, hints))
+	parts = append(parts, watchStatus)
+
+	// Filter status
+	if m.filterActive {
+		filterStatus := fmt.Sprintf("branch:%d/%d", m.FilteredBranchCount(), m.TotalBranchCount())
+		parts = append(parts, filterStatus)
+	}
+
+	// Key hints
+	hints := "[j/k] nav  [b]ranch  [c]lear  [enter] details  [q]uit"
+	parts = append(parts, hints)
+
+	return FooterStyle.Width(m.width).Render(fmt.Sprintf("%s  %s", parts[0], joinParts(parts[1:])))
+}
+
+func joinParts(parts []string) string {
+	result := ""
+	for i, p := range parts {
+		if i > 0 {
+			result += "  "
+		}
+		result += p
+	}
+	return result
 }
