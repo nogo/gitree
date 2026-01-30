@@ -303,14 +303,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			case "j", "down":
+				// Navigate within file list
 				m.list.FileCursorDown()
 				return m, nil
 			case "k", "up":
+				// Navigate within file list
 				m.list.FileCursorUp()
 				return m, nil
 			case "q", "ctrl+c":
 				return m, tea.Quit
 			}
+			// Block all other keys (including commit navigation) when expanded
 			return m, nil
 		}
 

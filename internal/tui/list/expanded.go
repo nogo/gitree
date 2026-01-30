@@ -60,7 +60,7 @@ var (
 
 // renderExpanded renders the expanded detail section for a commit
 // Returns multiple lines that should be inserted after the commit row
-func (m Model) renderExpanded(commit *domain.Commit, files []domain.FileChange, fileCursor int, fileScrollOffset int) []string {
+func (m Model) renderExpanded(commit *domain.Commit, files []domain.FileChange, fileCursor int, fileScrollOffset int, loading bool) []string {
 	graphWidth := m.graph.Width()
 	boxWidth := m.width - graphWidth - 2
 
@@ -69,127 +69,20 @@ func (m Model) renderExpanded(commit *domain.Commit, files []domain.FileChange, 
 	}
 
 	graphCont := m.graph.RenderContinuation(m.cursor)
-	innerWidth := boxWidth - 4 // space inside borders (║ + space + content + space + ║)
 
-	// Build content lines
-	var contentLines []string
-
-	// Commit info
-	if commit != nil {
-		contentLines = append(contentLines, fmt.Sprintf("Commit: %s", ExpandedHashStyle.Render(commit.Hash[:12])))
-		contentLines = append(contentLines, fmt.Sprintf("Author: %s <%s>", commit.Author, commit.Email))
-		contentLines = append(contentLines, fmt.Sprintf("Date:   %s", commit.Date.Format("Jan 2, 2006 15:04")))
-		if len(commit.Parents) > 0 {
-			parentShort := commit.Parents[0]
-			if len(parentShort) > 7 {
-				parentShort = parentShort[:7]
-			}
-			contentLines = append(contentLines, fmt.Sprintf("Parent: %s", parentShort))
-		}
-		contentLines = append(contentLines, "") // blank line
+	// Choose layout based on width
+	var boxLines []string
+	if boxWidth >= minTwoColumnWidth {
+		boxLines = m.renderTwoColumnExpanded(commit, files, fileCursor, fileScrollOffset, boxWidth, loading)
+	} else {
+		boxLines = m.renderSingleColumnExpanded(commit, files, fileCursor, fileScrollOffset, boxWidth, loading)
 	}
 
-	// Files section
-	if len(files) > 0 {
-		// Calculate totals
-		totalAdd, totalDel := 0, 0
-		for _, f := range files {
-			totalAdd += f.Additions
-			totalDel += f.Deletions
-		}
-		contentLines = append(contentLines, fmt.Sprintf("Files (%d)  %s %s",
-			len(files),
-			AdditionsStyle.Render(fmt.Sprintf("+%d", totalAdd)),
-			DeletionsStyle.Render(fmt.Sprintf("-%d", totalDel))))
-
-		// Show files with cursor
-		visibleFiles := maxVisibleFiles
-		if len(files) < visibleFiles {
-			visibleFiles = len(files)
-		}
-		// Adjust scroll
-		if fileCursor < fileScrollOffset {
-			fileScrollOffset = fileCursor
-		}
-		if fileCursor >= fileScrollOffset+visibleFiles {
-			fileScrollOffset = fileCursor - visibleFiles + 1
-		}
-		endIdx := fileScrollOffset + visibleFiles
-		if endIdx > len(files) {
-			endIdx = len(files)
-		}
-
-		for i := fileScrollOffset; i < endIdx; i++ {
-			f := files[i]
-			cursor := "  "
-			if i == fileCursor {
-				cursor = "> "
-			}
-			status := "M"
-			statusStyle := FileModifiedStyle
-			switch f.Status {
-			case domain.FileAdded:
-				status = "A"
-				statusStyle = FileAddedStyle
-			case domain.FileDeleted:
-				status = "D"
-				statusStyle = FileDeletedStyle
-			case domain.FileRenamed:
-				status = "R"
-				statusStyle = FileRenamedStyle
-			}
-			// Truncate path to fit
-			maxPath := innerWidth - 20
-			if maxPath < 10 {
-				maxPath = 10
-			}
-			path := f.Path
-			if len(path) > maxPath {
-				path = path[:maxPath-1] + "…"
-			}
-			fileLine := fmt.Sprintf("%s%s %s %s %s",
-				cursor,
-				statusStyle.Render(status),
-				path,
-				AdditionsStyle.Render(fmt.Sprintf("+%d", f.Additions)),
-				DeletionsStyle.Render(fmt.Sprintf("-%d", f.Deletions)))
-			contentLines = append(contentLines, fileLine)
-		}
-	}
-
-	// Pad to fixed height
-	for len(contentLines) < expandedHeight-3 { // -3 for top, bottom, help
-		contentLines = append(contentLines, "")
-	}
-
-	// Build result with borders
+	// Prepend graph continuation to each line
 	var result []string
-
-	// Top border
-	topBorder := ExpandedBorderStyle.Render("╔" + strings.Repeat("═", boxWidth-2) + "╗")
-	result = append(result, "  "+graphCont+topBorder)
-
-	// Content rows
-	for _, content := range contentLines {
-		// Truncate and pad content
-		contentDisplay := truncateToWidth(content, innerWidth)
-		padded := contentDisplay + strings.Repeat(" ", innerWidth-displayLen(contentDisplay))
-		line := ExpandedBorderStyle.Render("║") + " " + padded + " " + ExpandedBorderStyle.Render("║")
+	for _, line := range boxLines {
 		result = append(result, "  "+graphCont+line)
 	}
-
-	// Help line
-	help := "[↑/↓] file  [Enter] diff  [Esc] close"
-	helpPad := innerWidth - len(help)
-	if helpPad < 0 {
-		helpPad = 0
-	}
-	helpLine := ExpandedHelpStyle.Render(help) + strings.Repeat(" ", helpPad)
-	result = append(result, "  "+graphCont+ExpandedBorderStyle.Render("║")+" "+helpLine+" "+ExpandedBorderStyle.Render("║"))
-
-	// Bottom border
-	bottomBorder := ExpandedBorderStyle.Render("╚" + strings.Repeat("═", boxWidth-2) + "╝")
-	result = append(result, "  "+graphCont+bottomBorder)
 
 	return result
 }
@@ -225,7 +118,7 @@ func truncateToWidth(s string, width int) string {
 	return result.String()
 }
 
-func (m Model) renderTwoColumnExpanded(commit *domain.Commit, files []domain.FileChange, fileCursor int, fileScrollOffset int, totalWidth int) []string {
+func (m Model) renderTwoColumnExpanded(commit *domain.Commit, files []domain.FileChange, fileCursor int, fileScrollOffset int, totalWidth int, loading bool) []string {
 	// Box structure for two columns:
 	// Top: ╔ + ═×left + ╤ + ═×right + ╗
 	// Row: ║ + content + │ + content + ║
@@ -255,7 +148,7 @@ func (m Model) renderTwoColumnExpanded(commit *domain.Commit, files []domain.Fil
 	}
 
 	leftLines := m.renderMetadataColumn(commit, leftContentWidth)
-	rightLines := m.renderFilesColumn(files, fileCursor, fileScrollOffset, rightContentWidth)
+	rightLines := m.renderFilesColumn(files, fileCursor, fileScrollOffset, rightContentWidth, loading)
 
 	// Pad to same height
 	maxLines := expandedHeight - 2 // -2 for borders
@@ -280,7 +173,7 @@ func (m Model) renderTwoColumnExpanded(commit *domain.Commit, files []domain.Fil
 
 	// Bottom border with help text centered
 	// Bottom: ╚ + inner + ╝ = totalWidth, so inner = totalWidth - 2
-	help := " [↑/↓] file  [Enter] diff  [Esc] close "
+	help := " [j/k] file  [Enter] diff  [Esc] close "
 	bottomInner := totalWidth - 2
 	helpLen := len(help)
 	if helpLen > bottomInner {
@@ -295,7 +188,7 @@ func (m Model) renderTwoColumnExpanded(commit *domain.Commit, files []domain.Fil
 	return lines
 }
 
-func (m Model) renderSingleColumnExpanded(commit *domain.Commit, files []domain.FileChange, fileCursor int, fileScrollOffset int, totalWidth int) []string {
+func (m Model) renderSingleColumnExpanded(commit *domain.Commit, files []domain.FileChange, fileCursor int, fileScrollOffset int, totalWidth int, loading bool) []string {
 	var lines []string
 	innerWidth := totalWidth - 4 // borders + padding
 
@@ -312,7 +205,7 @@ func (m Model) renderSingleColumnExpanded(commit *domain.Commit, files []domain.
 	lines = append(lines, ExpandedBorderStyle.Render("╟"+strings.Repeat("─", totalWidth-2)+"╢"))
 
 	// Files
-	fileLines := m.renderFilesColumn(files, fileCursor, fileScrollOffset, innerWidth)
+	fileLines := m.renderFilesColumn(files, fileCursor, fileScrollOffset, innerWidth, loading)
 	for _, fl := range fileLines {
 		lines = append(lines, m.wrapInBorder(fl, totalWidth))
 	}
@@ -323,7 +216,7 @@ func (m Model) renderSingleColumnExpanded(commit *domain.Commit, files []domain.
 	}
 
 	// Bottom border with help text centered
-	help := " [↑/↓] file  [Enter] diff  [Esc] close "
+	help := " [j/k] file  [Enter] diff  [Esc] close "
 	borderWidth := totalWidth - 2 // -2 for ╚ and ╝
 	helpLen := len(help)
 	if helpLen > borderWidth {
@@ -386,8 +279,13 @@ func (m Model) renderMetadataColumn(commit *domain.Commit, width int) []string {
 	return lines
 }
 
-func (m Model) renderFilesColumn(files []domain.FileChange, cursor int, scrollOffset int, width int) []string {
+func (m Model) renderFilesColumn(files []domain.FileChange, cursor int, scrollOffset int, width int, loading bool) []string {
 	var lines []string
+
+	if loading {
+		lines = append(lines, ExpandedLabelStyle.Render("Loading files..."))
+		return lines
+	}
 
 	if len(files) == 0 {
 		lines = append(lines, ExpandedLabelStyle.Render("No files changed"))

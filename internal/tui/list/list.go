@@ -139,6 +139,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, nil
 
 	case tea.MouseMsg:
+		// Block mouse scrolling when expanded
+		if m.expanded {
+			return m, nil
+		}
 		switch msg.Type {
 		case tea.MouseWheelUp:
 			m.cursorUp(3)
@@ -405,7 +409,7 @@ func (m Model) renderList() string {
 		if m.expanded && i == m.cursor {
 			commit := m.SelectedCommit()
 			if commit != nil {
-				expandedLines := m.renderExpanded(commit, m.expandedFiles, m.fileCursor, m.fileScrollOffset)
+				expandedLines := m.renderExpanded(commit, m.expandedFiles, m.fileCursor, m.fileScrollOffset, m.expandedLoading)
 				rows = append(rows, expandedLines...)
 			}
 		}
