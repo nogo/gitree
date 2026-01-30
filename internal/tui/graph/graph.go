@@ -47,6 +47,30 @@ func (r *Renderer) Width() int {
 	return r.layout.MaxLanes * 2
 }
 
+// MaxLanesInRange returns the maximum lane used in a range of commits
+func (r *Renderer) MaxLanesInRange(start, end int) int {
+	if start < 0 {
+		start = 0
+	}
+	if end > len(r.commits) {
+		end = len(r.commits)
+	}
+
+	maxLane := 0
+	for i := start; i < end; i++ {
+		if lane := r.layout.MaxLaneAt(i); lane > maxLane {
+			maxLane = lane
+		}
+	}
+	return maxLane
+}
+
+// WidthForRange returns the graph width needed for a range of commits
+func (r *Renderer) WidthForRange(start, end int) int {
+	maxLane := r.MaxLanesInRange(start, end)
+	return (maxLane + 1) * 2 // +1 because lanes are 0-indexed
+}
+
 // RenderGraphCell returns the graph portion for commit at index
 func (r *Renderer) RenderGraphCell(i int) string {
 	if i < 0 || i >= len(r.commits) {

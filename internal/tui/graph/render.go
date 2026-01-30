@@ -34,7 +34,7 @@ func (r *RowRenderer) RenderRow(row int) string {
 	// Format: [cell0][sep0][cell1][sep1]... where each cell is 1 char and each sep is 1 char
 	var result strings.Builder
 
-	for lane := 0; lane < r.layout.MaxLanes; lane++ {
+	for lane := range r.layout.MaxLanes {
 		// Render the cell for this lane
 		var cellChar rune
 		var cellColor int
@@ -155,7 +155,7 @@ func (r *RowRenderer) RenderRowDimmed(row int) string {
 
 	var result strings.Builder
 
-	for lane := 0; lane < r.layout.MaxLanes; lane++ {
+	for lane := range r.layout.MaxLanes {
 		var cellChar rune
 		hasContent := false
 
@@ -267,7 +267,7 @@ func (r *RowRenderer) RenderContinuation(row int) string {
 	activeLanes := r.layout.ActiveLanesAt(row)
 
 	var result strings.Builder
-	for lane := 0; lane < r.layout.MaxLanes; lane++ {
+	for lane := range r.layout.MaxLanes {
 		if activeLanes[lane] {
 			result.WriteString(r.colorForLane(lane).Render(string(CharVertical)))
 		} else {

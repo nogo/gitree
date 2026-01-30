@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/nogo/gitree/internal/domain"
+	"github.com/nogo/gitree/internal/tui/text"
 )
 
 const (
@@ -61,14 +62,22 @@ var (
 // renderExpanded renders the expanded detail section for a commit
 // Returns multiple lines that should be inserted after the commit row
 func (m Model) renderExpanded(commit *domain.Commit, files []domain.FileChange, fileCursor int, fileScrollOffset int, loading bool) []string {
-	graphWidth := m.graph.Width()
-	boxWidth := m.width - graphWidth - 2
+	return m.renderExpandedWithLayout(commit, files, fileCursor, fileScrollOffset, loading, m.layout)
+}
+
+// renderExpandedWithLayout renders expanded section using a specific layout
+func (m Model) renderExpandedWithLayout(commit *domain.Commit, files []domain.FileChange, fileCursor int, fileScrollOffset int, loading bool, layout RowLayout) []string {
+	// Use layout's graph width for consistent alignment
+	graphWidth := layout.Graph
+	boxWidth := m.width - graphWidth - 4 // 4 = cursor(2) + space after graph(1) + padding(1)
 
 	if boxWidth < 30 {
 		boxWidth = 30
 	}
 
 	graphCont := m.graph.RenderContinuation(m.cursor)
+	// Truncate/pad continuation to match layout
+	graphCont = text.FitAnsi(graphCont, graphWidth)
 
 	// Choose layout based on width
 	var boxLines []string
@@ -300,11 +309,8 @@ func (m Model) renderFilesColumn(files []domain.FileChange, cursor int, scrollOf
 	}
 
 	// Header - truncate to fit width
-	header := fmt.Sprintf("Files (%d)  %s %s",
-		len(files),
-		AdditionsStyle.Render(fmt.Sprintf("+%d", totalAdd)),
-		DeletionsStyle.Render(fmt.Sprintf("-%d", totalDel)),
-	)
+	stats := text.FileStats{Additions: totalAdd, Deletions: totalDel}
+	header := fmt.Sprintf("Files (%d)  %s", len(files), stats.Render())
 	lines = append(lines, truncateWithAnsi(header, width))
 
 	// File list with scrolling
@@ -359,10 +365,8 @@ func (m Model) renderFilesColumn(files []domain.FileChange, cursor int, scrollOf
 		path := truncateStr(f.Path, pathWidth)
 
 		// Stats
-		stats := fmt.Sprintf("%s %s",
-			AdditionsStyle.Render(fmt.Sprintf("+%d", f.Additions)),
-			DeletionsStyle.Render(fmt.Sprintf("-%d", f.Deletions)),
-		)
+		fileStats := text.FileStats{Additions: f.Additions, Deletions: f.Deletions}
+		stats := fileStats.Render()
 
 		line := fmt.Sprintf("%s%s %s %s", cursorStr, statusStr, padRight(path, pathWidth), stats)
 		if selected {

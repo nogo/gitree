@@ -104,25 +104,27 @@ func TestHashMatch(t *testing.T) {
 	}
 }
 
-func TestSortInts(t *testing.T) {
+func TestInsertSorted(t *testing.T) {
 	tests := []struct {
 		input  []int
+		val    int
 		expect []int
 	}{
-		{[]int{3, 1, 2}, []int{1, 2, 3}},
-		{[]int{1, 2, 3}, []int{1, 2, 3}},
-		{[]int{}, []int{}},
-		{[]int{5}, []int{5}},
+		{[]int{1, 3, 5}, 2, []int{1, 2, 3, 5}},
+		{[]int{1, 3, 5}, 0, []int{0, 1, 3, 5}},
+		{[]int{1, 3, 5}, 6, []int{1, 3, 5, 6}},
+		{[]int{}, 1, []int{1}},
 	}
 
 	for _, tc := range tests {
-		// Make a copy
-		s := make([]int, len(tc.input))
-		copy(s, tc.input)
-		sortInts(s)
-		for i := range s {
-			if s[i] != tc.expect[i] {
-				t.Errorf("sortInts(%v) = %v, want %v", tc.input, s, tc.expect)
+		got := insertSorted(tc.input, tc.val)
+		if len(got) != len(tc.expect) {
+			t.Errorf("insertSorted(%v, %d) = %v, want %v", tc.input, tc.val, got, tc.expect)
+			continue
+		}
+		for i := range got {
+			if got[i] != tc.expect[i] {
+				t.Errorf("insertSorted(%v, %d) = %v, want %v", tc.input, tc.val, got, tc.expect)
 				break
 			}
 		}

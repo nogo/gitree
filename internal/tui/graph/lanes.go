@@ -1,6 +1,10 @@
 package graph
 
-import "github.com/nogo/gitree/internal/domain"
+import (
+	"slices"
+
+	"github.com/nogo/gitree/internal/domain"
+)
 
 // CommitNode extends commit data with graph layout information
 type CommitNode struct {
@@ -102,7 +106,7 @@ func (l *GraphLayout) assignLanes() {
 		}
 
 		// Sort targeting lanes for deterministic behavior
-		sortInts(targetingLanes)
+		slices.Sort(targetingLanes)
 
 		var assignedLane int
 		if len(targetingLanes) > 0 {
@@ -188,6 +192,37 @@ func (l *GraphLayout) ActiveLanesAt(row int) map[int]bool {
 	return l.ActiveLanes[row]
 }
 
+// MaxLaneAt returns the highest lane number used at a given row
+func (l *GraphLayout) MaxLaneAt(row int) int {
+	if row < 0 || row >= len(l.Nodes) {
+		return 0
+	}
+
+	node := l.Nodes[row]
+	maxLane := node.Lane
+
+	// Check active lanes
+	for lane := range l.ActiveLanes[row] {
+		if lane > maxLane {
+			maxLane = lane
+		}
+	}
+
+	// Check merge/fork connections
+	for _, lane := range node.MergeFrom {
+		if lane > maxLane {
+			maxLane = lane
+		}
+	}
+	for _, lane := range node.ForkTo {
+		if lane > maxLane {
+			maxLane = lane
+		}
+	}
+
+	return maxLane
+}
+
 // hashMatch checks if two hashes match (handling short hash prefixes)
 func hashMatch(a, b string) bool {
 	if a == b {
@@ -202,23 +237,8 @@ func hashMatch(a, b string) bool {
 	return false
 }
 
-// sortInts sorts a slice of ints in place (simple insertion sort for small slices)
-func sortInts(s []int) {
-	for i := 1; i < len(s); i++ {
-		for j := i; j > 0 && s[j] < s[j-1]; j-- {
-			s[j], s[j-1] = s[j-1], s[j]
-		}
-	}
-}
-
 // insertSorted inserts v into sorted slice s maintaining order
 func insertSorted(s []int, v int) []int {
-	i := 0
-	for i < len(s) && s[i] < v {
-		i++
-	}
-	s = append(s, 0)
-	copy(s[i+1:], s[i:])
-	s[i] = v
-	return s
+	i, _ := slices.BinarySearch(s, v)
+	return slices.Insert(s, i, v)
 }

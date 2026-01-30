@@ -1,17 +1,19 @@
 package list
 
 import (
-	"fmt"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/nogo/gitree/internal/domain"
 	"github.com/nogo/gitree/internal/tui/graph"
+	"github.com/nogo/gitree/internal/tui/text"
 )
 
 type Model struct {
 	commits           []domain.Commit
 	graph             *graph.Renderer
+	layout            RowLayout // base layout for current width/graph
+	viewportLayout    RowLayout // dynamic layout based on visible viewport
 	cursor            int
 	viewOffset        int // first visible row (virtual scrolling)
 	width             int
@@ -60,6 +62,7 @@ func (m *Model) SetRepo(repo *domain.Repository) {
 		m.cursor = oldCursor
 	}
 
+	m.recalculateLayout()
 	m.syncViewport()
 }
 
@@ -87,6 +90,7 @@ func (m *Model) SetFilteredCommits(commits []domain.Commit, repo *domain.Reposit
 		m.cursor = oldCursor
 	}
 
+	m.recalculateLayout()
 	m.syncViewport()
 }
 
@@ -96,7 +100,17 @@ func (m *Model) SetSize(w, h int) {
 	m.width = w
 	m.height = h
 	m.ready = true
+	m.recalculateLayout()
 	m.syncViewport()
+}
+
+// recalculateLayout updates the cached layout based on current width and graph
+func (m *Model) recalculateLayout() {
+	graphLanes := 1
+	if m.graph != nil {
+		graphLanes = m.graph.Width() / 2 // Width() returns lanes * 2
+	}
+	m.layout = NewRowLayout(m.width, graphLanes)
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
@@ -166,20 +180,23 @@ func (m Model) renderVisibleRows() string {
 		return ""
 	}
 
-	var rows []string
 	endRow := m.viewOffset + m.height
 	if endRow > len(m.commits) {
 		endRow = len(m.commits)
 	}
 
+	// Calculate dynamic layout based on lanes needed in viewport
+	viewportLayout := m.layoutForViewport(m.viewOffset, endRow)
+
+	var rows []string
 	for i := m.viewOffset; i < endRow; i++ {
-		rows = append(rows, m.renderRow(i, m.commits[i]))
+		rows = append(rows, m.renderRowWithLayout(i, m.commits[i], viewportLayout))
 
 		// Insert expanded content after selected row
 		if m.expanded && i == m.cursor {
 			commit := m.SelectedCommit()
 			if commit != nil {
-				expandedLines := m.renderExpanded(commit, m.expandedFiles, m.fileCursor, m.fileScrollOffset, m.expandedLoading)
+				expandedLines := m.renderExpandedWithLayout(commit, m.expandedFiles, m.fileCursor, m.fileScrollOffset, m.expandedLoading, viewportLayout)
 				rows = append(rows, expandedLines...)
 			}
 		}
@@ -191,6 +208,28 @@ func (m Model) renderVisibleRows() string {
 	}
 
 	return strings.Join(rows, "\n")
+}
+
+// layoutForViewport calculates optimal layout for the visible range
+func (m Model) layoutForViewport(start, end int) RowLayout {
+	if m.graph == nil {
+		return m.layout
+	}
+
+	// Get max lanes needed for this viewport
+	viewportLanes := m.graph.MaxLanesInRange(start, end)
+
+	// Use at least 1 lane, cap at MaxGraphWidth
+	graphWidth := (viewportLanes + 1) * 2
+	if graphWidth < 4 {
+		graphWidth = 4
+	}
+	if graphWidth > MaxGraphWidth {
+		graphWidth = MaxGraphWidth
+	}
+
+	// Calculate layout with viewport-specific graph width
+	return NewRowLayoutWithGraph(m.width, graphWidth)
 }
 
 func (m *Model) cursorUp(n int) {
@@ -255,6 +294,30 @@ func (m Model) SelectedCommit() *domain.Commit {
 	return nil
 }
 
+// GraphWidth returns the calculated graph column width (for external use like headers)
+func (m Model) GraphWidth() int {
+	return m.ViewportLayout().Graph
+}
+
+// Layout returns the base row layout
+func (m Model) Layout() RowLayout {
+	return m.layout
+}
+
+// ViewportLayout returns the dynamic layout based on visible commits
+func (m Model) ViewportLayout() RowLayout {
+	if m.graph == nil || len(m.commits) == 0 {
+		return m.layout
+	}
+
+	endRow := m.viewOffset + m.height
+	if endRow > len(m.commits) {
+		endRow = len(m.commits)
+	}
+
+	return m.layoutForViewport(m.viewOffset, endRow)
+}
+
 // CommitCount returns the number of commits in the list
 func (m Model) CommitCount() int {
 	return len(m.commits)
@@ -293,14 +356,6 @@ func (m Model) Commits() []domain.Commit {
 func (m *Model) SetCursor(pos int) {
 	m.cursorTo(pos)
 	m.syncViewport()
-}
-
-// GraphWidth returns the current graph column width
-func (m Model) GraphWidth() int {
-	if m.graph == nil {
-		return 2 // minimum
-	}
-	return m.graph.Width()
 }
 
 // Expansion methods
@@ -391,17 +446,42 @@ func (m *Model) FileCursorDown() {
 }
 
 func (m Model) renderRow(i int, c domain.Commit) string {
+	return m.renderRowWithLayout(i, c, m.layout)
+}
+
+// renderRowWithLayout renders a row using a specific layout (for viewport-specific sizing)
+func (m Model) renderRowWithLayout(i int, c domain.Commit, layout RowLayout) string {
 	selected := i == m.cursor
 	isMatch := m.matchIndices != nil && m.matchIndices[i]
 
-	// Determine if this commit should be dimmed (highlight active but not matching)
+	// Build row data
+	row := m.buildRowWithLayout(i, c, isMatch, layout)
+
+	// Determine styling
 	dimmed := false
 	if m.highlightedEmails != nil {
-		email := strings.ToLower(c.Email)
-		dimmed = !m.highlightedEmails[email]
+		dimmed = !m.highlightedEmails[strings.ToLower(c.Email)]
 	}
 
-	// Cursor indicator (2 chars): combines cursor (>) and match marker (*)
+	style := RowStyle{
+		Selected: selected,
+		Dimmed:   dimmed,
+		Width:    m.width,
+	}
+
+	return row.Render(layout, style)
+}
+
+// buildRow creates a Row with all column data for a commit.
+func (m Model) buildRow(i int, c domain.Commit, isMatch bool) Row {
+	return m.buildRowWithLayout(i, c, isMatch, m.layout)
+}
+
+// buildRowWithLayout creates a Row using a specific layout.
+func (m Model) buildRowWithLayout(i int, c domain.Commit, isMatch bool, layout RowLayout) Row {
+	selected := i == m.cursor
+
+	// Cursor indicator
 	cursor := "  "
 	if selected && isMatch {
 		cursor = ">*"
@@ -411,124 +491,29 @@ func (m Model) renderRow(i int, c domain.Commit) string {
 		cursor = " *"
 	}
 
-	// Graph cell from renderer (dynamic width)
+	// Graph cell
 	graphCell := m.graph.RenderGraphCell(i)
-	if dimmed {
+	if m.highlightedEmails != nil && !m.highlightedEmails[strings.ToLower(c.Email)] {
 		graphCell = m.graph.RenderGraphCellDimmed(i)
 	}
-	graphWidth := m.graph.Width()
 
-	// Branch badges
+	// Message with badges
 	badges := m.graph.RenderBranchBadges(c)
-
-	// Fixed width columns (rune-aware padding)
-	authorWidth := 12
-	authorTrunc := truncate(c.Author, authorWidth)
-	authorLen := len([]rune(authorTrunc))
-	author := strings.Repeat(" ", authorWidth-authorLen) + authorTrunc // right-align
-
-	dateStr := formatRelativeTime(c.Date)
-	dateLen := len(dateStr)
-	date := strings.Repeat(" ", 10-dateLen) + dateStr // right-align
-
-	hash := c.ShortHash // full 7 chars
-
-	// Message width: total - cursor(2) - graph(dynamic) - space(1) - spacing(2) - author(12) - spacing(2) - date(10) - spacing(2) - hash(7)
-	// = width - 38 - graphWidth
-	msgWidth := m.width - 38 - graphWidth
-	if msgWidth < 10 {
-		msgWidth = 10
-	}
-
-	// Account for badge width in message truncation
-	badgeLen := runeLen(badges)
-	msgAvail := msgWidth - badgeLen
+	badgeLen := text.Width(badges)
+	msgAvail := layout.Message - badgeLen
 	if msgAvail < 5 {
 		msgAvail = 5
 	}
-	msg := badges + truncate(c.Message, msgAvail)
+	message := badges + text.Truncate(c.Message, msgAvail)
 
-	// Pad message to fixed width for alignment
-	msgLen := runeLen(msg)
-	msgDisplay := msg + strings.Repeat(" ", msgWidth-msgLen)
-	if msgLen > msgWidth {
-		msgDisplay = msg
+	return Row{
+		Cursor:  cursor,
+		Graph:   graphCell,
+		Message: message,
+		Author:  text.Truncate(c.Author, layout.Author),
+		Date:    formatRelativeTime(c.Date),
+		Hash:    c.ShortHash,
 	}
-
-	// Apply styles to individual parts (non-selected rows)
-	if !selected {
-		if dimmed {
-			hash = DimmedHashStyle.Render(hash)
-			author = DimmedAuthorStyle.Render(author)
-			date = DimmedDateStyle.Render(date)
-			msgDisplay = DimmedMessageStyle.Render(msgDisplay)
-		} else {
-			hash = HashStyle.Render(hash)
-			author = AuthorStyle.Render(author)
-			date = DateStyle.Render(date)
-		}
-	}
-
-	// New column order: cursor | graph | message | author | date | hash
-	row := fmt.Sprintf("%s%s %s  %s  %s  %s",
-		cursor, graphCell, msgDisplay, author, date, hash)
-
-	if selected {
-		return SelectedRowStyle.Width(m.width).Render(row)
-	}
-	return row
-}
-
-// truncate truncates a string to max runes, adding ellipsis if needed
-func truncate(s string, max int) string {
-	runes := []rune(s)
-	if len(runes) <= max {
-		return s
-	}
-	if max <= 1 {
-		return string(runes[:max])
-	}
-	return string(runes[:max-1]) + "…"
-}
-
-// runeLen returns the display width of a string (rune count, excluding ANSI codes)
-func runeLen(s string) int {
-	count := 0
-	inEscape := false
-	for _, r := range s {
-		if r == '\x1b' {
-			inEscape = true
-			continue
-		}
-		if inEscape {
-			if r == 'm' {
-				inEscape = false
-			}
-			continue
-		}
-		count++
-	}
-	return count
-}
-
-// stripAnsi removes ANSI escape codes for length calculation
-func stripAnsi(s string) string {
-	var result strings.Builder
-	inEscape := false
-	for _, r := range s {
-		if r == '\x1b' {
-			inEscape = true
-			continue
-		}
-		if inEscape {
-			if r == 'm' {
-				inEscape = false
-			}
-			continue
-		}
-		result.WriteRune(r)
-	}
-	return result.String()
 }
 
 func clamp(v, lo, hi int) int {
