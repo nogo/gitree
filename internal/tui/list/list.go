@@ -19,6 +19,7 @@ type Model struct {
 	height            int
 	ready             bool
 	highlightedEmails map[string]bool // emails to highlight (nil = no highlight)
+	matchIndices      map[int]bool    // indices of search matches (nil = no search)
 }
 
 func New(repo *domain.Repository) Model {
@@ -221,6 +222,35 @@ func (m *Model) SetHighlightedEmails(emails []string) {
 	}
 }
 
+// SetMatchIndices sets which commit indices are search matches (nil = no search)
+func (m *Model) SetMatchIndices(indices []int) {
+	if len(indices) == 0 {
+		m.matchIndices = nil
+	} else {
+		m.matchIndices = make(map[int]bool)
+		for _, i := range indices {
+			m.matchIndices[i] = true
+		}
+	}
+	if m.ready {
+		m.viewport.SetContent(m.renderList())
+	}
+}
+
+// Commits returns the current commit list
+func (m Model) Commits() []domain.Commit {
+	return m.commits
+}
+
+// SetCursor sets the cursor position and syncs viewport
+func (m *Model) SetCursor(pos int) {
+	m.cursorTo(pos)
+	if m.ready {
+		m.viewport.SetContent(m.renderList())
+		m.syncViewport()
+	}
+}
+
 // GraphWidth returns the current graph column width
 func (m Model) GraphWidth() int {
 	if m.graph == nil {
@@ -239,6 +269,7 @@ func (m Model) renderList() string {
 
 func (m Model) renderRow(i int, c domain.Commit) string {
 	selected := i == m.cursor
+	isMatch := m.matchIndices != nil && m.matchIndices[i]
 
 	// Determine if this commit should be dimmed (highlight active but not matching)
 	dimmed := false
@@ -247,10 +278,14 @@ func (m Model) renderRow(i int, c domain.Commit) string {
 		dimmed = !m.highlightedEmails[email]
 	}
 
-	// Cursor indicator (2 chars)
+	// Cursor indicator (2 chars): combines cursor (>) and match marker (*)
 	cursor := "  "
-	if selected {
+	if selected && isMatch {
+		cursor = ">*"
+	} else if selected {
 		cursor = "> "
+	} else if isMatch {
+		cursor = " *"
 	}
 
 	// Graph cell from renderer (dynamic width)

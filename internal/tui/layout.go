@@ -79,6 +79,19 @@ func (m Model) renderContent() string {
 }
 
 func (m Model) renderFooter() string {
+	// Search input mode - show search box in footer
+	if m.SearchInputMode() {
+		left := "Search: " + m.SearchInputView()
+		right := "[Enter] [Esc]"
+
+		spacing := m.width - len("Search: ") - 40 - len(right) // textinput width is 40
+		if spacing < 2 {
+			spacing = 2
+		}
+
+		return FooterStyle.Render(left + strings.Repeat(" ", spacing) + right)
+	}
+
 	// Watch status indicator
 	watchStatus := "○"
 	if m.watching {
@@ -112,13 +125,27 @@ func (m Model) renderFooter() string {
 		filterParts = append(filterParts, fmt.Sprintf("highlight:%s", m.HighlightedAuthorName()))
 	}
 
+	// Search status
+	if m.SearchActive() {
+		matchCount := m.SearchMatchCount()
+		if matchCount > 0 {
+			filterParts = append(filterParts, fmt.Sprintf("match %d/%d \"%s\"",
+				m.SearchCurrentMatch(), matchCount, m.SearchQuery()))
+		} else {
+			filterParts = append(filterParts, fmt.Sprintf("no matches \"%s\"", m.SearchQuery()))
+		}
+	}
+
 	filterStats := ""
 	if len(filterParts) > 0 {
 		filterStats = "  " + strings.Join(filterParts, " ")
 	}
 
-	// Condensed keybindings
-	keys := "[a]uthor [A]highlight [b]ranch [c]lear [q]"
+	// Condensed keybindings - include search keys when search is active
+	keys := "[/]search [a]uthor [A]highlight [b]ranch [c]lear [q]"
+	if m.SearchActive() && m.SearchMatchCount() > 0 {
+		keys = "[n]ext [N]prev [c]lear [q]"
+	}
 
 	// Build footer with spacing
 	left := fmt.Sprintf("%s %s%s", watchStatus, commitStats, filterStats)

@@ -10,29 +10,31 @@ import (
 	"github.com/nogo/gitree/internal/tui/detail"
 	"github.com/nogo/gitree/internal/tui/filter"
 	"github.com/nogo/gitree/internal/tui/list"
+	"github.com/nogo/gitree/internal/tui/search"
 	"github.com/nogo/gitree/internal/watcher"
 )
 
 type Model struct {
-	repo               *domain.Repository
-	repoPath           string
-	list               list.Model
-	detail             detail.Model
-	branchFilter       filter.BranchFilter
-	authorFilter       filter.AuthorFilter
-	authorHighlight    filter.AuthorHighlight
-	watcher            *watcher.Watcher
-	watching           bool
-	showDetail         bool
-	showBranchFilter   bool
-	showAuthorFilter   bool
+	repo                *domain.Repository
+	repoPath            string
+	list                list.Model
+	detail              detail.Model
+	branchFilter        filter.BranchFilter
+	authorFilter        filter.AuthorFilter
+	authorHighlight     filter.AuthorHighlight
+	search              search.Search
+	watcher             *watcher.Watcher
+	watching            bool
+	showDetail          bool
+	showBranchFilter    bool
+	showAuthorFilter    bool
 	showAuthorHighlight bool
-	branchFilterActive bool
-	authorFilterActive bool
-	width              int
-	height             int
-	ready              bool
-	err                error
+	branchFilterActive  bool
+	authorFilterActive  bool
+	width               int
+	height              int
+	ready               bool
+	err                 error
 }
 
 func NewModel(repo *domain.Repository, repoPath string, w *watcher.Watcher) Model {
@@ -44,6 +46,7 @@ func NewModel(repo *domain.Repository, repoPath string, w *watcher.Watcher) Mode
 		branchFilter:    filter.NewBranchFilter(repo.Branches),
 		authorFilter:    filter.NewAuthorFilter(repo.Commits),
 		authorHighlight: filter.NewAuthorHighlight(repo.Commits),
+		search:          search.New(),
 		watcher:         w,
 		watching:        w != nil,
 	}
@@ -125,6 +128,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Handle search input mode
+	if m.search.IsInputMode() {
+		if keyMsg, ok := msg.(tea.KeyMsg); ok {
+			var cmd tea.Cmd
+			var done, cancelled bool
+			m.search, cmd, done, cancelled = m.search.Update(keyMsg)
+			if done {
+				m.executeSearch()
+			}
+			if cancelled {
+				// Input cancelled, search state preserved
+			}
+			return m, cmd
+		}
+		return m, nil
+	}
+
 	switch msg := msg.(type) {
 	case RepoChangedMsg:
 		// Repo changed, trigger reload and re-arm watcher
@@ -148,6 +168,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Reapply highlight if active
 			if m.authorHighlight.IsActive() {
 				m.applyHighlight()
+			}
+			// Re-execute search if active
+			if m.search.IsActive() {
+				m.executeSearch()
 			}
 		}
 		return m, nil
@@ -192,14 +216,36 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.showAuthorHighlight = true
 			return m, nil
 
+		case "/":
+			m.search.Activate()
+			return m, nil
+
+		case "n":
+			// Next search match
+			if m.search.IsActive() && m.search.MatchCount() > 0 {
+				m.search.NextMatch()
+				m.jumpToCurrentMatch()
+			}
+			return m, nil
+
+		case "N":
+			// Previous search match
+			if m.search.IsActive() && m.search.MatchCount() > 0 {
+				m.search.PrevMatch()
+				m.jumpToCurrentMatch()
+			}
+			return m, nil
+
 		case "c":
-			// Clear all filters and highlight
+			// Clear all filters, highlight, and search
 			m.branchFilter.Reset()
 			m.authorFilter.Reset()
 			m.authorHighlight.Reset()
+			m.search.Clear()
 			m.branchFilterActive = false
 			m.authorFilterActive = false
 			m.list.SetHighlightedEmails(nil)
+			m.list.SetMatchIndices(nil)
 			m.list.SetRepo(m.repo)
 			return m, nil
 
@@ -427,4 +473,51 @@ func (m Model) AuthorHighlightActive() bool {
 // HighlightedAuthorName returns the name of the highlighted author
 func (m Model) HighlightedAuthorName() string {
 	return m.authorHighlight.HighlightedName()
+}
+
+// SearchActive returns whether search is active
+func (m Model) SearchActive() bool {
+	return m.search.IsActive()
+}
+
+// SearchInputMode returns whether search input is active
+func (m Model) SearchInputMode() bool {
+	return m.search.IsInputMode()
+}
+
+// SearchQuery returns the current search query
+func (m Model) SearchQuery() string {
+	return m.search.Query()
+}
+
+// SearchMatchCount returns the number of search matches
+func (m Model) SearchMatchCount() int {
+	return m.search.MatchCount()
+}
+
+// SearchCurrentMatch returns the current match number (1-indexed)
+func (m Model) SearchCurrentMatch() int {
+	return m.search.CurrentMatch() + 1
+}
+
+// SearchInputView returns the search input view
+func (m Model) SearchInputView() string {
+	return m.search.InputView()
+}
+
+// executeSearch runs the search and updates the view
+func (m *Model) executeSearch() {
+	// Search on currently displayed commits (may be filtered)
+	commits := m.list.Commits()
+	m.search.Execute(commits)
+	m.list.SetMatchIndices(m.search.Matches())
+	m.jumpToCurrentMatch()
+}
+
+// jumpToCurrentMatch moves cursor to the current search match
+func (m *Model) jumpToCurrentMatch() {
+	idx := m.search.CurrentMatchCommitIndex()
+	if idx >= 0 {
+		m.list.SetCursor(idx)
+	}
 }
