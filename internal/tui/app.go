@@ -2,6 +2,7 @@ package tui
 
 import (
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -9,6 +10,7 @@ import (
 	"github.com/nogo/gitree/internal/git"
 	"github.com/nogo/gitree/internal/tui/detail"
 	"github.com/nogo/gitree/internal/tui/filter"
+	"github.com/nogo/gitree/internal/tui/histogram"
 	"github.com/nogo/gitree/internal/tui/list"
 	"github.com/nogo/gitree/internal/tui/search"
 	"github.com/nogo/gitree/internal/watcher"
@@ -23,6 +25,7 @@ type Model struct {
 	authorFilter        filter.AuthorFilter
 	authorHighlight     filter.AuthorHighlight
 	search              search.Search
+	histogram           histogram.Histogram
 	watcher             *watcher.Watcher
 	watching            bool
 	showDetail          bool
@@ -31,6 +34,9 @@ type Model struct {
 	showAuthorHighlight bool
 	branchFilterActive  bool
 	authorFilterActive  bool
+	timeFilterActive    bool
+	timeFilterStart     time.Time
+	timeFilterEnd       time.Time
 	width               int
 	height              int
 	ready               bool
@@ -47,6 +53,7 @@ func NewModel(repo *domain.Repository, repoPath string, w *watcher.Watcher) Mode
 		authorFilter:    filter.NewAuthorFilter(repo.Commits),
 		authorHighlight: filter.NewAuthorHighlight(repo.Commits),
 		search:          search.New(),
+		histogram:       histogram.New(repo.Commits, 80), // default width, will resize
 		watcher:         w,
 		watching:        w != nil,
 	}
@@ -145,6 +152,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Handle histogram focus mode
+	if m.histogram.IsFocused() {
+		if keyMsg, ok := msg.(tea.KeyMsg); ok {
+			switch keyMsg.String() {
+			case "tab":
+				// Switch focus back to list
+				m.histogram.SetFocused(false)
+				return m, nil
+			case "q", "ctrl+c":
+				return m, tea.Quit
+			default:
+				var selectionChanged bool
+				m.histogram, _, selectionChanged = m.histogram.Update(keyMsg)
+				if selectionChanged {
+					m.applyTimeFilter()
+				}
+				return m, nil
+			}
+		}
+		return m, nil
+	}
+
 	switch msg := msg.(type) {
 	case RepoChangedMsg:
 		// Repo changed, trigger reload and re-arm watcher
@@ -159,9 +188,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.branchFilter.UpdateBranches(msg.Repo.Branches)
 			m.authorFilter.UpdateAuthors(msg.Repo.Commits)
 			m.authorHighlight.UpdateAuthors(msg.Repo.Commits)
-			// Reapply filter if active
-			if m.branchFilterActive || m.authorFilterActive {
-				m.applyFilter()
+			// Recalculate histogram
+			m.histogram.Recalculate(msg.Repo.Commits, m.width)
+			// Reapply filters if any active
+			if m.branchFilterActive || m.authorFilterActive || m.timeFilterActive {
+				m.applyAllFilters()
 			} else {
 				m.list.SetRepo(msg.Repo)
 			}
@@ -236,17 +267,36 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
+		case "t":
+			// Toggle histogram visibility
+			m.histogram.Toggle()
+			m.recalculateListHeight()
+			return m, nil
+
+		case "tab":
+			// Switch focus to histogram (if visible)
+			if m.histogram.IsVisible() {
+				m.histogram.SetFocused(true)
+			}
+			return m, nil
+
 		case "c":
 			// Clear all filters, highlight, and search
 			m.branchFilter.Reset()
 			m.authorFilter.Reset()
 			m.authorHighlight.Reset()
+			m.histogram.Reset()
 			m.search.Clear()
 			m.branchFilterActive = false
 			m.authorFilterActive = false
+			m.timeFilterActive = false
+			m.timeFilterStart = time.Time{}
+			m.timeFilterEnd = time.Time{}
 			m.list.SetHighlightedEmails(nil)
 			m.list.SetMatchIndices(nil)
 			m.list.SetRepo(m.repo)
+			// Recalculate histogram with all commits
+			m.histogram.Recalculate(m.repo.Commits, m.width)
 			return m, nil
 
 		case "esc":
@@ -258,12 +308,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.ready = true
-		// Header(1) + separator(1) + column headers(1) + separator(1) + footer(1) = 5 lines
-		contentHeight := msg.Height - 5
-		if contentHeight < 1 {
-			contentHeight = 1
-		}
-		m.list.SetSize(msg.Width, contentHeight)
+		// Recalculate histogram with new width
+		m.histogram.Recalculate(m.repo.Commits, msg.Width)
+		m.recalculateListHeight()
 		m.detail.SetSize(msg.Width, msg.Height)
 		m.branchFilter.SetSize(msg.Width, msg.Height)
 		m.authorFilter.SetSize(msg.Width, msg.Height)
@@ -277,39 +324,85 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) applyFilter() {
-	branchAllSelected := m.branchFilter.AllSelected()
-	authorAllSelected := m.authorFilter.AllSelected()
-
-	m.branchFilterActive = !branchAllSelected
-	m.authorFilterActive = !authorAllSelected
-
-	if branchAllSelected && authorAllSelected {
-		// No filtering needed
-		m.list.SetRepo(m.repo)
-		return
-	}
-
-	// Start with all commits
-	filtered := m.repo.Commits
-
-	// Apply branch filter if active
-	if !branchAllSelected {
-		selectedBranches := m.branchFilter.SelectedBranches()
-		filtered = m.filterCommitsByBranch(filtered, selectedBranches)
-	}
-
-	// Apply author filter if active
-	if !authorAllSelected {
-		selectedEmails := m.authorFilter.SelectedEmails()
-		filtered = m.filterCommitsByAuthor(filtered, selectedEmails)
-	}
-
-	m.list.SetFilteredCommits(filtered, m.repo)
+	m.branchFilterActive = !m.branchFilter.AllSelected()
+	m.authorFilterActive = !m.authorFilter.AllSelected()
+	m.applyAllFilters()
 }
 
 func (m *Model) applyHighlight() {
 	emails := m.authorHighlight.HighlightedEmails()
 	m.list.SetHighlightedEmails(emails)
+}
+
+func (m *Model) recalculateListHeight() {
+	// Header(1) + separator(1) + column headers(1) + separator(1) + footer(1) = 5 lines
+	// Plus histogram height if visible
+	histHeight := m.histogram.Height()
+	contentHeight := m.height - 5 - histHeight
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
+	m.list.SetSize(m.width, contentHeight)
+}
+
+func (m *Model) applyTimeFilter() {
+	start, end, hasSelection := m.histogram.SelectedRange()
+	if !hasSelection {
+		m.timeFilterActive = false
+		m.timeFilterStart = time.Time{}
+		m.timeFilterEnd = time.Time{}
+		// Reapply other filters without time constraint
+		m.applyAllFilters()
+		return
+	}
+
+	m.timeFilterActive = true
+	m.timeFilterStart = start
+	m.timeFilterEnd = end
+	m.applyAllFilters()
+}
+
+func (m *Model) applyAllFilters() {
+	// Start with all commits
+	filtered := m.repo.Commits
+
+	// Apply branch filter
+	if !m.branchFilter.AllSelected() {
+		selectedBranches := m.branchFilter.SelectedBranches()
+		filtered = m.filterCommitsByBranch(filtered, selectedBranches)
+	}
+
+	// Apply author filter
+	if !m.authorFilter.AllSelected() {
+		selectedEmails := m.authorFilter.SelectedEmails()
+		filtered = m.filterCommitsByAuthor(filtered, selectedEmails)
+	}
+
+	// Apply time filter
+	if m.timeFilterActive {
+		filtered = m.filterCommitsByTime(filtered, m.timeFilterStart, m.timeFilterEnd)
+	}
+
+	if len(filtered) == len(m.repo.Commits) {
+		m.list.SetRepo(m.repo)
+	} else {
+		m.list.SetFilteredCommits(filtered, m.repo)
+	}
+
+	// Re-execute search if active
+	if m.search.IsActive() {
+		m.executeSearch()
+	}
+}
+
+func (m Model) filterCommitsByTime(commits []domain.Commit, start, end time.Time) []domain.Commit {
+	var result []domain.Commit
+	for _, c := range commits {
+		if !c.Date.Before(start) && c.Date.Before(end) {
+			result = append(result, c)
+		}
+	}
+	return result
 }
 
 func (m Model) filterCommitsByBranch(commits []domain.Commit, branchNames []string) []domain.Commit {
@@ -520,4 +613,37 @@ func (m *Model) jumpToCurrentMatch() {
 	if idx >= 0 {
 		m.list.SetCursor(idx)
 	}
+}
+
+// TimeFilterActive returns whether a time filter is currently applied
+func (m Model) TimeFilterActive() bool {
+	return m.timeFilterActive
+}
+
+// TimeFilterRange returns the formatted time range
+func (m Model) TimeFilterRange() string {
+	if !m.timeFilterActive {
+		return ""
+	}
+	return m.timeFilterStart.Format("Jan 2") + " - " + m.timeFilterEnd.Format("Jan 2")
+}
+
+// HistogramVisible returns whether histogram is visible
+func (m Model) HistogramVisible() bool {
+	return m.histogram.IsVisible()
+}
+
+// HistogramFocused returns whether histogram is focused
+func (m Model) HistogramFocused() bool {
+	return m.histogram.IsFocused()
+}
+
+// HistogramView returns the histogram rendered view
+func (m Model) HistogramView() string {
+	return m.histogram.View()
+}
+
+// HistogramHeight returns the histogram height
+func (m Model) HistogramHeight() int {
+	return m.histogram.Height()
 }

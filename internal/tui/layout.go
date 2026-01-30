@@ -13,10 +13,13 @@ func (m Model) renderLayout() string {
 	separator := m.renderSeparator()
 	columnHeaders := m.renderColumnHeaders()
 	content := m.renderContent()
+	histogram := m.renderHistogram()
 	footer := m.renderFooter()
 
 	// Header(1) + separator(1) + column headers(1) + separator(1) + footer(1) = 5 lines
-	contentHeight := m.height - 5
+	// Plus histogram height if visible
+	histHeight := m.HistogramHeight()
+	contentHeight := m.height - 5 - histHeight
 	if contentHeight < 0 {
 		contentHeight = 0
 	}
@@ -24,6 +27,19 @@ func (m Model) renderLayout() string {
 	content = lipgloss.NewStyle().
 		Height(contentHeight).
 		Render(content)
+
+	if histogram != "" {
+		return lipgloss.JoinVertical(
+			lipgloss.Left,
+			header,
+			separator,
+			columnHeaders,
+			content,
+			separator,
+			histogram,
+			footer,
+		)
+	}
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
@@ -72,6 +88,13 @@ func (m Model) renderColumnHeaders() string {
 		prefix, msgWidth, "Message", "Author", "Date", "Hash")
 
 	return ColumnHeaderStyle.Render(header)
+}
+
+func (m Model) renderHistogram() string {
+	if !m.HistogramVisible() {
+		return ""
+	}
+	return m.HistogramView()
 }
 
 func (m Model) renderContent() string {
@@ -125,6 +148,11 @@ func (m Model) renderFooter() string {
 		filterParts = append(filterParts, fmt.Sprintf("highlight:%s", m.HighlightedAuthorName()))
 	}
 
+	// Time filter status
+	if m.TimeFilterActive() {
+		filterParts = append(filterParts, m.TimeFilterRange())
+	}
+
 	// Search status
 	if m.SearchActive() {
 		matchCount := m.SearchMatchCount()
@@ -141,10 +169,14 @@ func (m Model) renderFooter() string {
 		filterStats = "  " + strings.Join(filterParts, " ")
 	}
 
-	// Condensed keybindings - include search keys when search is active
-	keys := "[/]search [a]uthor [A]highlight [b]ranch [c]lear [q]"
-	if m.SearchActive() && m.SearchMatchCount() > 0 {
-		keys = "[n]ext [N]prev [c]lear [q]"
+	// Condensed keybindings - context-sensitive
+	var keys string
+	if m.HistogramFocused() {
+		keys = "[←→]nav [+/-]zoom [[]start []]end [enter]apply [esc]back"
+	} else if m.SearchActive() && m.SearchMatchCount() > 0 {
+		keys = "[n]ext [N]prev [t]ime [c]lear [q]"
+	} else {
+		keys = "[/]search [a]uthor [b]ranch [t]ime [tab]timeline [c]lear [q]"
 	}
 
 	// Build footer with spacing
