@@ -83,66 +83,43 @@ func (r *Reader) loadCommitsFromRepo(repo *git.Repository, limit int) ([]domain.
 		return []domain.Commit{}, nil
 	}
 
-	// Collect all branch head hashes to include commits from all branches
-	var allBranchHashes []plumbing.Hash
-	allBranchHashes = append(allBranchHashes, head.Hash())
-
-	localBranches, _ := repo.Branches()
-	localBranches.ForEach(func(ref *plumbing.Reference) error {
-		allBranchHashes = append(allBranchHashes, ref.Hash())
-		return nil
-	})
-
-	allRefs, _ := repo.References()
-	allRefs.ForEach(func(ref *plumbing.Reference) error {
-		if strings.HasPrefix(ref.Name().String(), "refs/remotes/") {
-			allBranchHashes = append(allBranchHashes, ref.Hash())
-		}
-		return nil
-	})
-
-	// Use a map to deduplicate commits from multiple branches
-	seen := make(map[string]bool)
+	// Load commits from HEAD only - this includes all reachable commits
+	// through merge history. Loading from each remote ref separately is
+	// O(refs × commits) and catastrophically slow for repos with many remotes.
 	var commits []domain.Commit
 
-	for _, branchHash := range allBranchHashes {
-		logOpts := &git.LogOptions{
-			From:  branchHash,
-			Order: git.LogOrderCommitterTime,
-		}
-
-		iter, err := repo.Log(logOpts)
-		if err != nil {
-			continue
-		}
-
-		iter.ForEach(func(c *object.Commit) error {
-			hash := c.Hash.String()
-			if seen[hash] {
-				return nil
-			}
-			seen[hash] = true
-
-			parents := make([]string, len(c.ParentHashes))
-			for i, p := range c.ParentHashes {
-				parents[i] = p.String()
-			}
-
-			commits = append(commits, domain.Commit{
-				Hash:        hash,
-				ShortHash:   hash[:7],
-				Author:      c.Author.Name,
-				Email:       c.Author.Email,
-				Date:        c.Committer.When, // Use committer date for proper ordering
-				Message:     firstLine(c.Message),
-				FullMessage: c.Message,
-				Parents:     parents,
-				BranchRefs:  branchRefs[hash],
-			})
-			return nil
-		})
-		iter.Close()
+	logOpts := &git.LogOptions{
+		From:  head.Hash(),
+		Order: git.LogOrderCommitterTime,
 	}
+
+	iter, err := repo.Log(logOpts)
+	if err != nil {
+		return nil, err
+	}
+
+	iter.ForEach(func(c *object.Commit) error {
+		hash := c.Hash.String()
+
+		parents := make([]string, len(c.ParentHashes))
+		for i, p := range c.ParentHashes {
+			parents[i] = p.String()
+		}
+
+		commits = append(commits, domain.Commit{
+			Hash:        hash,
+			ShortHash:   hash[:7],
+			Author:      c.Author.Name,
+			Email:       c.Author.Email,
+			Date:        c.Committer.When,
+			Message:     firstLine(c.Message),
+			FullMessage: c.Message,
+			Parents:     parents,
+			BranchRefs:  branchRefs[hash],
+		})
+		return nil
+	})
+	iter.Close()
 
 	// Topological sort: children before parents, with date as tiebreaker
 	commits = topoSortCommits(commits)
