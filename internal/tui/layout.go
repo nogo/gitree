@@ -90,15 +90,33 @@ func (m Model) renderFooter() string {
 	total := m.TotalCommitCount()
 	commitStats := fmt.Sprintf("%d/%d commits", filtered, total)
 
-	// Branch stats
-	branchCount := m.TotalBranchCount()
-	branchStats := fmt.Sprintf("%d branches", branchCount)
+	// Filter stats
+	var filterParts []string
+
+	// Branch filter status
+	if m.BranchFilterActive() {
+		branchFiltered := m.FilteredBranchCount()
+		branchTotal := m.TotalBranchCount()
+		filterParts = append(filterParts, fmt.Sprintf("branch:%d/%d", branchFiltered, branchTotal))
+	}
+
+	// Author filter status
+	if m.AuthorFilterActive() {
+		authorFiltered := m.FilteredAuthorCount()
+		authorTotal := m.TotalAuthorCount()
+		filterParts = append(filterParts, fmt.Sprintf("author:%d/%d", authorFiltered, authorTotal))
+	}
+
+	filterStats := ""
+	if len(filterParts) > 0 {
+		filterStats = "  " + strings.Join(filterParts, " ")
+	}
 
 	// Condensed keybindings
-	keys := "[b]ranch [c]lear [?] [q]"
+	keys := "[a]uthor [b]ranch [c]lear [q]"
 
 	// Build footer with spacing
-	left := fmt.Sprintf("%s %s  %s", watchStatus, commitStats, branchStats)
+	left := fmt.Sprintf("%s %s%s", watchStatus, commitStats, filterStats)
 	right := keys
 
 	spacing := m.width - len(left) - len(right)

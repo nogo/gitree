@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"strings"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/nogo/gitree/internal/domain"
@@ -12,20 +14,23 @@ import (
 )
 
 type Model struct {
-	repo         *domain.Repository
-	repoPath     string
-	list         list.Model
-	detail       detail.Model
-	branchFilter filter.BranchFilter
-	watcher      *watcher.Watcher
-	watching     bool
-	showDetail   bool
-	showFilter   bool
-	filterActive bool
-	width        int
-	height       int
-	ready        bool
-	err          error
+	repo             *domain.Repository
+	repoPath         string
+	list             list.Model
+	detail           detail.Model
+	branchFilter     filter.BranchFilter
+	authorFilter     filter.AuthorFilter
+	watcher          *watcher.Watcher
+	watching         bool
+	showDetail       bool
+	showBranchFilter bool
+	showAuthorFilter bool
+	branchFilterActive bool
+	authorFilterActive bool
+	width            int
+	height           int
+	ready            bool
+	err              error
 }
 
 func NewModel(repo *domain.Repository, repoPath string, w *watcher.Watcher) Model {
@@ -35,6 +40,7 @@ func NewModel(repo *domain.Repository, repoPath string, w *watcher.Watcher) Mode
 		list:         list.New(repo),
 		detail:       detail.New(),
 		branchFilter: filter.NewBranchFilter(repo.Branches),
+		authorFilter: filter.NewAuthorFilter(repo.Commits),
 		watcher:      w,
 		watching:     w != nil,
 	}
@@ -65,17 +71,34 @@ func (m Model) reloadRepo() tea.Cmd {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	// Handle filter overlay first
-	if m.showFilter {
+	// Handle branch filter overlay first
+	if m.showBranchFilter {
 		if keyMsg, ok := msg.(tea.KeyMsg); ok {
 			var done, cancelled bool
 			m.branchFilter, _, done, cancelled = m.branchFilter.Update(keyMsg)
 			if done {
 				m.applyFilter()
-				m.showFilter = false
+				m.showBranchFilter = false
 			}
 			if cancelled {
-				m.showFilter = false
+				m.showBranchFilter = false
+			}
+			return m, nil
+		}
+		return m, nil
+	}
+
+	// Handle author filter overlay
+	if m.showAuthorFilter {
+		if keyMsg, ok := msg.(tea.KeyMsg); ok {
+			var done, cancelled bool
+			m.authorFilter, _, done, cancelled = m.authorFilter.Update(keyMsg)
+			if done {
+				m.applyFilter()
+				m.showAuthorFilter = false
+			}
+			if cancelled {
+				m.showAuthorFilter = false
 			}
 			return m, nil
 		}
@@ -94,8 +117,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Err == nil {
 			m.repo = msg.Repo
 			m.branchFilter.UpdateBranches(msg.Repo.Branches)
+			m.authorFilter.UpdateAuthors(msg.Repo.Commits)
 			// Reapply filter if active
-			if m.filterActive {
+			if m.branchFilterActive || m.authorFilterActive {
 				m.applyFilter()
 			} else {
 				m.list.SetRepo(msg.Repo)
@@ -130,13 +154,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "b":
 			m.branchFilter.SetSize(m.width, m.height)
-			m.showFilter = true
+			m.showBranchFilter = true
+			return m, nil
+
+		case "a":
+			m.authorFilter.SetSize(m.width, m.height)
+			m.showAuthorFilter = true
 			return m, nil
 
 		case "c":
-			// Clear filter
+			// Clear all filters
 			m.branchFilter.Reset()
-			m.filterActive = false
+			m.authorFilter.Reset()
+			m.branchFilterActive = false
+			m.authorFilterActive = false
 			m.list.SetRepo(m.repo)
 			return m, nil
 
@@ -157,6 +188,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.list.SetSize(msg.Width, contentHeight)
 		m.detail.SetSize(msg.Width, msg.Height)
 		m.branchFilter.SetSize(msg.Width, msg.Height)
+		m.authorFilter.SetSize(msg.Width, msg.Height)
 	}
 
 	// Route updates to list
@@ -166,20 +198,37 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) applyFilter() {
-	if m.branchFilter.AllSelected() {
+	branchAllSelected := m.branchFilter.AllSelected()
+	authorAllSelected := m.authorFilter.AllSelected()
+
+	m.branchFilterActive = !branchAllSelected
+	m.authorFilterActive = !authorAllSelected
+
+	if branchAllSelected && authorAllSelected {
 		// No filtering needed
-		m.filterActive = false
 		m.list.SetRepo(m.repo)
 		return
 	}
 
-	m.filterActive = true
-	selectedBranches := m.branchFilter.SelectedBranches()
-	filtered := m.filterCommits(selectedBranches)
+	// Start with all commits
+	filtered := m.repo.Commits
+
+	// Apply branch filter if active
+	if !branchAllSelected {
+		selectedBranches := m.branchFilter.SelectedBranches()
+		filtered = m.filterCommitsByBranch(filtered, selectedBranches)
+	}
+
+	// Apply author filter if active
+	if !authorAllSelected {
+		selectedEmails := m.authorFilter.SelectedEmails()
+		filtered = m.filterCommitsByAuthor(filtered, selectedEmails)
+	}
+
 	m.list.SetFilteredCommits(filtered, m.repo)
 }
 
-func (m Model) filterCommits(branchNames []string) []domain.Commit {
+func (m Model) filterCommitsByBranch(commits []domain.Commit, branchNames []string) []domain.Commit {
 	if len(branchNames) == 0 {
 		return []domain.Commit{}
 	}
@@ -228,8 +277,30 @@ func (m Model) filterCommits(branchNames []string) []domain.Commit {
 
 	// Filter commits maintaining order
 	var result []domain.Commit
-	for _, c := range m.repo.Commits {
+	for _, c := range commits {
 		if reachable[c.Hash] {
+			result = append(result, c)
+		}
+	}
+
+	return result
+}
+
+func (m Model) filterCommitsByAuthor(commits []domain.Commit, emails []string) []domain.Commit {
+	if len(emails) == 0 {
+		return []domain.Commit{}
+	}
+
+	// emails are already normalized to lowercase from AuthorFilter
+	emailSet := make(map[string]bool)
+	for _, e := range emails {
+		emailSet[e] = true
+	}
+
+	var result []domain.Commit
+	for _, c := range commits {
+		// Normalize commit email for comparison
+		if emailSet[strings.ToLower(c.Email)] {
 			result = append(result, c)
 		}
 	}
@@ -241,8 +312,11 @@ func (m Model) View() string {
 	if !m.ready {
 		return "Loading..."
 	}
-	if m.showFilter {
+	if m.showBranchFilter {
 		return m.branchFilter.View()
+	}
+	if m.showAuthorFilter {
+		return m.authorFilter.View()
 	}
 	if m.showDetail {
 		return m.renderWithDetail()
@@ -264,9 +338,14 @@ func (m Model) Watching() bool {
 	return m.watching
 }
 
-// FilterActive returns whether a filter is currently applied
-func (m Model) FilterActive() bool {
-	return m.filterActive
+// BranchFilterActive returns whether a branch filter is currently applied
+func (m Model) BranchFilterActive() bool {
+	return m.branchFilterActive
+}
+
+// AuthorFilterActive returns whether an author filter is currently applied
+func (m Model) AuthorFilterActive() bool {
+	return m.authorFilterActive
 }
 
 // FilteredBranchCount returns the number of branches in filter
@@ -287,4 +366,14 @@ func (m Model) FilteredCommitCount() int {
 // TotalCommitCount returns the total number of commits in the repo
 func (m Model) TotalCommitCount() int {
 	return len(m.repo.Commits)
+}
+
+// FilteredAuthorCount returns the number of authors in filter
+func (m Model) FilteredAuthorCount() int {
+	return m.authorFilter.SelectedCount()
+}
+
+// TotalAuthorCount returns the total number of authors
+func (m Model) TotalAuthorCount() int {
+	return m.authorFilter.TotalCount()
 }
