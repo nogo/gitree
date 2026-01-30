@@ -62,7 +62,11 @@ var (
 // Returns multiple lines that should be inserted after the commit row
 func (m Model) renderExpanded(commit *domain.Commit, files []domain.FileChange, fileCursor int, fileScrollOffset int) []string {
 	graphWidth := m.graph.Width()
-	contentWidth := m.width - graphWidth - 3 // -3 for cursor and spacing
+	// Line structure: "  " (2) + graphCont (graphWidth) + box
+	// Box outer width = totalWidth + 2 (for ╔╗)
+	// So: 2 + graphWidth + totalWidth + 2 = m.width
+	// totalWidth = m.width - graphWidth - 4
+	contentWidth := m.width - graphWidth - 4
 
 	if contentWidth < 30 {
 		contentWidth = 30
@@ -90,18 +94,31 @@ func (m Model) renderExpanded(commit *domain.Commit, files []domain.FileChange, 
 }
 
 func (m Model) renderTwoColumnExpanded(commit *domain.Commit, files []domain.FileChange, fileCursor int, fileScrollOffset int, totalWidth int) []string {
-	// Split width: 50% metadata, 50% files
-	leftWidth := totalWidth / 2
-	rightWidth := totalWidth - leftWidth - 1 // -1 for separator
+	// Calculate interior widths
+	// Total box width = totalWidth + 2 (for ╔ and ╗)
+	// Interior = totalWidth, split as: leftInterior + 1 (│) + rightInterior
+	// Content row: ║ + leftContent + │ + rightContent + ║
+	// So interior fits: leftContent + 1 + rightContent = totalWidth
+	leftInterior := (totalWidth - 1) / 2 // -1 for center separator
+	rightInterior := totalWidth - 1 - leftInterior
 
 	var lines []string
 
-	// Top border
-	lines = append(lines, ExpandedBorderStyle.Render("╔"+strings.Repeat("═", leftWidth)+"╤"+strings.Repeat("═", rightWidth)+"╗"))
+	// Top border: ╔ + ═×leftInterior + ╤ + ═×rightInterior + ╗
+	lines = append(lines, ExpandedBorderStyle.Render("╔"+strings.Repeat("═", leftInterior)+"╤"+strings.Repeat("═", rightInterior)+"╗"))
 
-	// Content rows
-	leftLines := m.renderMetadataColumn(commit, leftWidth-2)
-	rightLines := m.renderFilesColumn(files, fileCursor, fileScrollOffset, rightWidth-2)
+	// Content rows - leave 1 char padding each side
+	leftContentWidth := leftInterior - 2
+	rightContentWidth := rightInterior - 2
+	if leftContentWidth < 10 {
+		leftContentWidth = 10
+	}
+	if rightContentWidth < 10 {
+		rightContentWidth = 10
+	}
+
+	leftLines := m.renderMetadataColumn(commit, leftContentWidth)
+	rightLines := m.renderFilesColumn(files, fileCursor, fileScrollOffset, rightContentWidth)
 
 	// Pad to same height
 	maxLines := expandedHeight - 2 // -2 for borders
@@ -113,21 +130,28 @@ func (m Model) renderTwoColumnExpanded(commit *domain.Commit, files []domain.Fil
 	}
 
 	for i := 0; i < maxLines; i++ {
-		left := padRight(leftLines[i], leftWidth-2)
-		right := padRight(rightLines[i], rightWidth-2)
+		left := padRight(leftLines[i], leftContentWidth)
+		right := padRight(rightLines[i], rightContentWidth)
+		// Row: ║ + space + leftContent + space + │ + space + rightContent + space + ║
+		// Width: 1 + 1 + leftContentWidth + 1 + 1 + 1 + rightContentWidth + 1 + 1
+		//      = leftContentWidth + rightContentWidth + 7
+		// Must equal totalWidth + 2 (full box width)
+		// So: leftInterior - 2 + rightInterior - 2 + 7 = totalWidth + 2
+		//     totalWidth - 1 - 4 + 7 = totalWidth + 2 ✓
 		lines = append(lines, ExpandedBorderStyle.Render("║")+" "+left+" "+ExpandedBorderStyle.Render("│")+" "+right+" "+ExpandedBorderStyle.Render("║"))
 	}
 
 	// Bottom border with help text centered
-	// Inner width must match top border: leftWidth + 1 (╤) + rightWidth = totalWidth
+	// Inner width = leftInterior + 1 + rightInterior = totalWidth
 	help := " [↑/↓] file  [Enter] diff  [Esc] close "
-	borderWidth := totalWidth
+	innerWidth := totalWidth
 	helpLen := len(help)
-	if helpLen > borderWidth {
-		helpLen = borderWidth
+	if helpLen > innerWidth {
+		help = help[:innerWidth]
+		helpLen = innerWidth
 	}
-	leftBorder := (borderWidth - helpLen) / 2
-	rightBorder := borderWidth - helpLen - leftBorder
+	leftBorder := (innerWidth - helpLen) / 2
+	rightBorder := innerWidth - helpLen - leftBorder
 	bottomBorder := "╚" + strings.Repeat("═", leftBorder) + help + strings.Repeat("═", rightBorder) + "╝"
 	lines = append(lines, ExpandedBorderStyle.Render(bottomBorder))
 
