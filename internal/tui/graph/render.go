@@ -256,3 +256,30 @@ func (r *RowRenderer) displayWidth(s string) int {
 	}
 	return width
 }
+
+// RenderContinuation renders vertical continuation lines for expanded rows
+// This draws │ in all active lanes at the given row index
+func (r *RowRenderer) RenderContinuation(row int) string {
+	if row < 0 || row >= len(r.layout.Nodes) {
+		return strings.Repeat(" ", r.layout.MaxLanes*2)
+	}
+
+	activeLanes := r.layout.ActiveLanesAt(row)
+
+	var result strings.Builder
+	for lane := 0; lane < r.layout.MaxLanes; lane++ {
+		if activeLanes[lane] {
+			result.WriteString(r.colorForLane(lane).Render(string(CharVertical)))
+		} else {
+			result.WriteRune(CharSpace)
+		}
+
+		// Separator space
+		if lane < r.layout.MaxLanes-1 {
+			result.WriteRune(' ')
+		}
+	}
+	result.WriteRune(' ')
+
+	return result.String()
+}

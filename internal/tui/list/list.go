@@ -20,6 +20,13 @@ type Model struct {
 	ready             bool
 	highlightedEmails map[string]bool // emails to highlight (nil = no highlight)
 	matchIndices      map[int]bool    // indices of search matches (nil = no search)
+
+	// Expansion state
+	expanded         bool                 // whether a commit is expanded
+	expandedFiles    []domain.FileChange  // files for expanded commit
+	expandedLoading  bool                 // loading files
+	fileCursor       int                  // cursor within file list
+	fileScrollOffset int                  // scroll offset for file list
 }
 
 func New(repo *domain.Repository) Model {
@@ -35,6 +42,11 @@ func (m *Model) SetRepo(repo *domain.Repository) {
 	oldCursor := m.cursor
 	m.commits = repo.Commits
 	m.graph = graph.NewRenderer(repo.Commits, repo.Branches, repo.HEAD)
+
+	// Collapse expansion on repo change
+	m.expanded = false
+	m.expandedFiles = nil
+	m.expandedLoading = false
 
 	// Clamp cursor to new bounds
 	if m.cursor >= len(m.commits) {
@@ -61,6 +73,11 @@ func (m *Model) SetFilteredCommits(commits []domain.Commit, repo *domain.Reposit
 	oldCursor := m.cursor
 	m.commits = commits
 	m.graph = graph.NewRenderer(commits, repo.Branches, repo.HEAD)
+
+	// Collapse expansion on filter change
+	m.expanded = false
+	m.expandedFiles = nil
+	m.expandedLoading = false
 
 	// Clamp cursor to new bounds
 	if m.cursor >= len(m.commits) {
@@ -174,18 +191,36 @@ func (m *Model) syncViewport() {
 	offset := m.viewport.YOffset
 	middle := m.height / 2
 
+	// Calculate total lines accounting for expansion
+	totalLines := len(m.commits)
+	cursorLine := m.cursor
+	if m.expanded {
+		totalLines += expandedHeight
+		// Cursor line stays the same, but content after it is shifted
+	}
+
 	// Scroll up: only if cursor goes above visible area
-	if m.cursor < offset {
-		offset = m.cursor
+	if cursorLine < offset {
+		offset = cursorLine
 	}
 
 	// Scroll down: keep cursor in upper half once it passes middle
-	if m.cursor > offset+middle {
-		offset = m.cursor - middle
+	// If expanded, we want to see the expanded content
+	viewNeeded := cursorLine
+	if m.expanded {
+		viewNeeded = cursorLine + expandedHeight
+	}
+
+	if viewNeeded > offset+m.height-1 {
+		offset = viewNeeded - m.height + 1
+	}
+
+	if cursorLine > offset+middle {
+		offset = cursorLine - middle
 	}
 
 	// Clamp to valid range
-	maxOffset := len(m.commits) - m.height
+	maxOffset := totalLines - m.height
 	if maxOffset < 0 {
 		maxOffset = 0
 	}
@@ -259,10 +294,121 @@ func (m Model) GraphWidth() int {
 	return m.graph.Width()
 }
 
+// Expansion methods
+
+// IsExpanded returns whether a commit is currently expanded
+func (m Model) IsExpanded() bool {
+	return m.expanded
+}
+
+// Expand expands the currently selected commit
+func (m *Model) Expand() {
+	m.expanded = true
+	m.expandedLoading = true
+	m.expandedFiles = nil
+	m.fileCursor = 0
+	m.fileScrollOffset = 0
+}
+
+// Collapse collapses the expanded commit
+func (m *Model) Collapse() {
+	m.expanded = false
+	m.expandedLoading = false
+	m.expandedFiles = nil
+	m.fileCursor = 0
+	m.fileScrollOffset = 0
+	if m.ready {
+		m.viewport.SetContent(m.renderList())
+		m.syncViewport()
+	}
+}
+
+// SetExpandedFiles sets the file list for the expanded commit
+func (m *Model) SetExpandedFiles(files []domain.FileChange) {
+	m.expandedFiles = files
+	m.expandedLoading = false
+	m.fileCursor = 0
+	m.fileScrollOffset = 0
+	if m.ready {
+		m.viewport.SetContent(m.renderList())
+		m.syncViewport()
+	}
+}
+
+// SetExpandedFilesError handles error loading files
+func (m *Model) SetExpandedFilesError() {
+	m.expandedFiles = nil
+	m.expandedLoading = false
+	if m.ready {
+		m.viewport.SetContent(m.renderList())
+		m.syncViewport()
+	}
+}
+
+// FileCursor returns the current file cursor position
+func (m Model) FileCursor() int {
+	return m.fileCursor
+}
+
+// ExpandedFiles returns the files for the expanded commit
+func (m Model) ExpandedFiles() []domain.FileChange {
+	return m.expandedFiles
+}
+
+// HasExpandedFiles returns true if there are files in the expanded view
+func (m Model) HasExpandedFiles() bool {
+	return len(m.expandedFiles) > 0
+}
+
+// SelectedFile returns the selected file in expanded view
+func (m Model) SelectedFile() *domain.FileChange {
+	if m.fileCursor >= 0 && m.fileCursor < len(m.expandedFiles) {
+		return &m.expandedFiles[m.fileCursor]
+	}
+	return nil
+}
+
+// FileCursorUp moves file cursor up
+func (m *Model) FileCursorUp() {
+	if m.fileCursor > 0 {
+		m.fileCursor--
+		// Adjust scroll offset
+		if m.fileCursor < m.fileScrollOffset {
+			m.fileScrollOffset = m.fileCursor
+		}
+		if m.ready {
+			m.viewport.SetContent(m.renderList())
+		}
+	}
+}
+
+// FileCursorDown moves file cursor down
+func (m *Model) FileCursorDown() {
+	if m.fileCursor < len(m.expandedFiles)-1 {
+		m.fileCursor++
+		// Adjust scroll offset
+		if m.fileCursor >= m.fileScrollOffset+maxVisibleFiles {
+			m.fileScrollOffset = m.fileCursor - maxVisibleFiles + 1
+		}
+		if m.ready {
+			m.viewport.SetContent(m.renderList())
+		}
+	}
+}
+
 func (m Model) renderList() string {
 	var rows []string
 	for i, c := range m.commits {
 		rows = append(rows, m.renderRow(i, c))
+
+		// Insert expanded content after selected row
+		if m.expanded && i == m.cursor {
+			commit := m.SelectedCommit()
+			if commit != nil {
+				expandedLines := m.renderExpanded(commit, m.expandedFiles, m.fileCursor, m.fileScrollOffset)
+				rows = append(rows, expandedLines...)
+			}
+		}
 	}
 	return strings.Join(rows, "\n")
 }

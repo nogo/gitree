@@ -8,7 +8,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/nogo/gitree/internal/domain"
 	"github.com/nogo/gitree/internal/git"
-	"github.com/nogo/gitree/internal/tui/detail"
 	"github.com/nogo/gitree/internal/tui/diff"
 	"github.com/nogo/gitree/internal/tui/filter"
 	"github.com/nogo/gitree/internal/tui/histogram"
@@ -21,7 +20,6 @@ type Model struct {
 	repo                *domain.Repository
 	repoPath            string
 	list                list.Model
-	detail              detail.Model
 	diffView            diff.DiffView
 	branchFilter        filter.BranchFilter
 	authorFilter        filter.AuthorFilter
@@ -30,7 +28,6 @@ type Model struct {
 	histogram           histogram.Histogram
 	watcher             *watcher.Watcher
 	watching            bool
-	showDetail          bool
 	showDiff            bool
 	showBranchFilter    bool
 	showAuthorFilter    bool
@@ -47,13 +44,10 @@ type Model struct {
 }
 
 func NewModel(repo *domain.Repository, repoPath string, w *watcher.Watcher) Model {
-	d := detail.New()
-	d.SetRepoPath(repoPath)
 	return Model{
 		repo:            repo,
 		repoPath:        repoPath,
 		list:            list.New(repo),
-		detail:          d,
 		diffView:        diff.New(),
 		branchFilter:    filter.NewBranchFilter(repo.Branches),
 		authorFilter:    filter.NewAuthorFilter(repo.Commits),
@@ -91,7 +85,7 @@ func (m Model) reloadRepo() tea.Cmd {
 
 // loadFileDiff returns a command that loads the diff for the current file
 func (m Model) loadFileDiff() tea.Cmd {
-	commit := m.detail.Commit()
+	commit := m.list.SelectedCommit()
 	if commit == nil {
 		return nil
 	}
@@ -110,6 +104,21 @@ func (m Model) loadFileDiff() tea.Cmd {
 			FileIndex: fileIndex,
 			Err:       err,
 		}
+	}
+}
+
+// loadExpandedFiles returns a command that loads files for the expanded commit
+func (m Model) loadExpandedFiles() tea.Cmd {
+	commit := m.list.SelectedCommit()
+	if commit == nil {
+		return nil
+	}
+	hash := commit.Hash
+	path := m.repoPath
+	return func() tea.Msg {
+		reader := git.NewReader()
+		files, err := reader.LoadFileChanges(path, hash)
+		return ExpandedFilesLoadedMsg{Files: files, Err: err}
 	}
 }
 
@@ -237,11 +246,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case detail.FileChangesLoadedMsg:
+	case ExpandedFilesLoadedMsg:
 		if msg.Err == nil {
-			m.detail.SetFiles(msg.Files)
+			m.list.SetExpandedFiles(msg.Files)
 		} else {
-			m.detail.SetFilesError()
+			m.list.SetExpandedFilesError()
 		}
 		return m, nil
 
@@ -278,23 +287,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		// Handle detail view keys
-		if m.showDetail {
+		// Handle expanded commit view keys
+		if m.list.IsExpanded() {
 			switch msg.String() {
-			case "q", "ctrl+c", "esc":
-				m.showDetail = false
+			case "esc":
+				m.list.Collapse()
 				return m, nil
 			case "enter":
 				// Open diff for selected file
-				if m.detail.HasFiles() {
-					m.diffView.Show(m.detail.Files(), m.detail.FileCursor())
+				if m.list.HasExpandedFiles() {
+					m.diffView.Show(m.list.ExpandedFiles(), m.list.FileCursor())
 					m.diffView.SetSize(m.width, m.height)
 					m.showDiff = true
 					return m, m.loadFileDiff()
 				}
 				return m, nil
+			case "j", "down":
+				m.list.FileCursorDown()
+				return m, nil
+			case "k", "up":
+				m.list.FileCursorUp()
+				return m, nil
+			case "q", "ctrl+c":
+				return m, tea.Quit
 			}
-			m.detail, _ = m.detail.Update(msg)
 			return m, nil
 		}
 
@@ -305,10 +321,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			selected := m.list.SelectedCommit()
 			if selected != nil {
-				m.detail.SetCommit(selected)
-				m.detail.SetSize(m.width, m.height)
-				m.showDetail = true
-				return m, m.detail.LoadFilesCmd()
+				m.list.Expand()
+				return m, m.loadExpandedFiles()
 			}
 			return m, nil
 
@@ -391,7 +405,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Recalculate histogram with new width
 		m.histogram.Recalculate(m.repo.Commits, msg.Width)
 		m.recalculateListHeight()
-		m.detail.SetSize(msg.Width, msg.Height)
 		m.diffView.SetSize(msg.Width, msg.Height)
 		m.branchFilter.SetSize(msg.Width, msg.Height)
 		m.authorFilter.SetSize(msg.Width, msg.Height)
@@ -582,19 +595,7 @@ func (m Model) View() string {
 	if m.showDiff {
 		return m.renderWithDiff()
 	}
-	if m.showDetail {
-		return m.renderWithDetail()
-	}
 	return m.renderLayout()
-}
-
-// renderWithDetail shows the detail view as a centered overlay
-func (m Model) renderWithDetail() string {
-	return lipgloss.Place(
-		m.width, m.height,
-		lipgloss.Center, lipgloss.Center,
-		m.detail.View(),
-	)
 }
 
 // renderWithDiff shows the diff view as a centered overlay

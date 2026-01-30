@@ -19,3 +19,9 @@ type DiffLoadedMsg struct {
 	FileIndex int
 	Err       error
 }
+
+// ExpandedFilesLoadedMsg carries loaded file changes for expanded commit
+type ExpandedFilesLoadedMsg struct {
+	Files []domain.FileChange
+	Err   error
+}

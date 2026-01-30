@@ -141,6 +141,14 @@ func (r *Renderer) badgeStyleForGroup(baseName string, hasLocal, hasRemote bool)
 	return OriginBadgeStyle
 }
 
+// RenderContinuation returns continuation lines for expanded row areas
+func (r *Renderer) RenderContinuation(i int) string {
+	if i < 0 || i >= len(r.commits) {
+		return strings.Repeat(" ", r.Width())
+	}
+	return r.rowRender.RenderContinuation(i)
+}
+
 func (r *Renderer) isHead(hash string) bool {
 	return hash == r.head || strings.HasPrefix(hash, r.head) || strings.HasPrefix(r.head, hash)
 }
