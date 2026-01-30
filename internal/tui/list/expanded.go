@@ -63,13 +63,13 @@ var (
 func (m Model) renderExpanded(commit *domain.Commit, files []domain.FileChange, fileCursor int, fileScrollOffset int) []string {
 	graphWidth := m.graph.Width()
 	// Line structure: "  " (2) + graphCont (graphWidth) + box
-	// Box outer width = totalWidth + 2 (for ╔╗)
-	// So: 2 + graphWidth + totalWidth + 2 = m.width
-	// totalWidth = m.width - graphWidth - 4
-	contentWidth := m.width - graphWidth - 4
+	// Single column box: ╔ + (n-2) ═'s + ╗ = n chars wide
+	// So total line = 2 + graphWidth + boxWidth = m.width
+	// boxWidth = m.width - graphWidth - 2
+	boxWidth := m.width - graphWidth - 2
 
-	if contentWidth < 30 {
-		contentWidth = 30
+	if boxWidth < 30 {
+		boxWidth = 30
 	}
 
 	// Determine layout mode
@@ -78,9 +78,9 @@ func (m Model) renderExpanded(commit *domain.Commit, files []domain.FileChange, 
 	var lines []string
 
 	if useTwoColumns {
-		lines = m.renderTwoColumnExpanded(commit, files, fileCursor, fileScrollOffset, contentWidth)
+		lines = m.renderTwoColumnExpanded(commit, files, fileCursor, fileScrollOffset, boxWidth)
 	} else {
-		lines = m.renderSingleColumnExpanded(commit, files, fileCursor, fileScrollOffset, contentWidth)
+		lines = m.renderSingleColumnExpanded(commit, files, fileCursor, fileScrollOffset, boxWidth)
 	}
 
 	// Prepend graph continuation to each line
@@ -94,17 +94,22 @@ func (m Model) renderExpanded(commit *domain.Commit, files []domain.FileChange, 
 }
 
 func (m Model) renderTwoColumnExpanded(commit *domain.Commit, files []domain.FileChange, fileCursor int, fileScrollOffset int, totalWidth int) []string {
-	// Calculate interior widths
-	// Total box width = totalWidth + 2 (for ╔ and ╗)
-	// Interior = totalWidth, split as: leftInterior + 1 (│) + rightInterior
-	// Content row: ║ + leftContent + │ + rightContent + ║
-	// So interior fits: leftContent + 1 + rightContent = totalWidth
-	leftInterior := (totalWidth - 1) / 2 // -1 for center separator
-	rightInterior := totalWidth - 1 - leftInterior
+	// Box structure for two columns:
+	// Top: ╔ + ═×left + ╤ + ═×right + ╗
+	// Row: ║ + content + │ + content + ║
+	// Bot: ╚ + ═×inner + ╝
+	//
+	// Box width = totalWidth
+	// Inner width (between ╔ and ╗) = totalWidth - 2
+	// Split inner: leftInterior + 1 (╤) + rightInterior = totalWidth - 2
+	// So: leftInterior + rightInterior = totalWidth - 3
+	innerWidth := totalWidth - 2
+	leftInterior := (innerWidth - 1) / 2 // -1 for center separator ╤
+	rightInterior := innerWidth - 1 - leftInterior
 
 	var lines []string
 
-	// Top border: ╔ + ═×leftInterior + ╤ + ═×rightInterior + ╗
+	// Top border: ╔ + ═×leftInterior + ╤ + ═×rightInterior + ╗ = totalWidth
 	lines = append(lines, ExpandedBorderStyle.Render("╔"+strings.Repeat("═", leftInterior)+"╤"+strings.Repeat("═", rightInterior)+"╗"))
 
 	// Content rows - leave 1 char padding each side
@@ -133,25 +138,25 @@ func (m Model) renderTwoColumnExpanded(commit *domain.Commit, files []domain.Fil
 		left := padRight(leftLines[i], leftContentWidth)
 		right := padRight(rightLines[i], rightContentWidth)
 		// Row: ║ + space + leftContent + space + │ + space + rightContent + space + ║
-		// Width: 1 + 1 + leftContentWidth + 1 + 1 + 1 + rightContentWidth + 1 + 1
-		//      = leftContentWidth + rightContentWidth + 7
-		// Must equal totalWidth + 2 (full box width)
-		// So: leftInterior - 2 + rightInterior - 2 + 7 = totalWidth + 2
-		//     totalWidth - 1 - 4 + 7 = totalWidth + 2 ✓
+		// Width = 1 + 1 + leftContentWidth + 1 + 1 + 1 + rightContentWidth + 1 + 1
+		//       = leftContentWidth + rightContentWidth + 7
+		//       = (leftInterior-2) + (rightInterior-2) + 7
+		//       = leftInterior + rightInterior + 3
+		//       = (totalWidth - 3) + 3 = totalWidth ✓
 		lines = append(lines, ExpandedBorderStyle.Render("║")+" "+left+" "+ExpandedBorderStyle.Render("│")+" "+right+" "+ExpandedBorderStyle.Render("║"))
 	}
 
 	// Bottom border with help text centered
-	// Inner width = leftInterior + 1 + rightInterior = totalWidth
+	// Bottom: ╚ + inner + ╝ = totalWidth, so inner = totalWidth - 2
 	help := " [↑/↓] file  [Enter] diff  [Esc] close "
-	innerWidth := totalWidth
+	bottomInner := totalWidth - 2
 	helpLen := len(help)
-	if helpLen > innerWidth {
-		help = help[:innerWidth]
-		helpLen = innerWidth
+	if helpLen > bottomInner {
+		help = help[:bottomInner]
+		helpLen = bottomInner
 	}
-	leftBorder := (innerWidth - helpLen) / 2
-	rightBorder := innerWidth - helpLen - leftBorder
+	leftBorder := (bottomInner - helpLen) / 2
+	rightBorder := bottomInner - helpLen - leftBorder
 	bottomBorder := "╚" + strings.Repeat("═", leftBorder) + help + strings.Repeat("═", rightBorder) + "╝"
 	lines = append(lines, ExpandedBorderStyle.Render(bottomBorder))
 
