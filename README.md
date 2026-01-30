@@ -16,36 +16,26 @@ A terminal-based git history visualization tool with live updates and time-based
 - **Diff view** - View file changes with syntax highlighting
 - **Vim-style navigation** - Keyboard-driven with mouse support
 
-## Installation
+## Layout
 
-### Download Binary
-
-Download the latest release from the [releases page](https://github.com/nogo/gitree/releases).
-
-```bash
-# Example for macOS Apple Silicon
-tar -xzf gitree_0.3.0_darwin_arm64.tar.gz
-sudo mv gitree /usr/local/bin/
 ```
-
-**macOS users:** If you see "cannot be opened because it is from an unidentified developer", run:
-
-```bash
-xattr -d com.apple.quarantine /usr/local/bin/gitree
-```
-
-### Go Install
-
-```bash
-go install github.com/nogo/gitree/cmd/gitree@latest
-```
-
-### Build from Source
-
-```bash
-git clone https://github.com/nogo/gitree.git
-cd gitree
-go build -o gitree ./cmd/gitree
+gitree                                                    repo-name
+───────────────────────────────────────────────────────────────────
+     Message                              Author       Date   Hash
+───────────────────────────────────────────────────────────────────
+│ ○  [main] Add feature...               Alice     12m ago  6144c
+│    ╔═══════════════════════╤═══════════════════════════════════╗
+│    ║ Commit: 6144c3d...    │ Files (3)  +42 -18                ║
+│    ║ Author: Alice <a@...> │ > M src/app.go          +30 -10  ║
+│    ║ Date:   Jan 30, 2026  │   A src/new.go          +12 -0   ║
+│    ╚═══ [j/k] file  [Enter] diff  [Esc] close ═════════════════╝
+●─┘  Merge branch 'feature'              Bob        1h ago  a1b2c
+│    Fix authentication bug              Carol      2h ago  b2c3d
+───────────────────────────────────────────────────────────────────
+                    ⣀⣀⣤⣤⣶⣶⣿⣿⣶⣶⣤⣤⣀⣀
+                   [━━━━━━━━━━]
+───────────────────────────────────────────────────────────────────
+● watching   47/1284 commits   12 branches       [b]ranch [c]lear
 ```
 
 ## Usage
@@ -109,26 +99,36 @@ gitree ~/projects/myrepo
 | `h` / `l` | Previous/next file |
 | `Esc` / `q` | Close |
 
-## Layout
+## Installation
 
+### Download Binary
+
+Download the latest release from the [releases page](https://github.com/nogo/gitree/releases).
+
+```bash
+# Example for macOS Apple Silicon
+tar -xzf gitree_0.3.0_darwin_arm64.tar.gz
+sudo mv gitree /usr/local/bin/
 ```
-gitree                                                    repo-name
-───────────────────────────────────────────────────────────────────
-     Message                              Author       Date   Hash
-───────────────────────────────────────────────────────────────────
-│ ○  [main] Add feature...               Alice     12m ago  6144c
-│    ╔═══════════════════════╤═══════════════════════════════════╗
-│    ║ Commit: 6144c3d...    │ Files (3)  +42 -18                ║
-│    ║ Author: Alice <a@...> │ > M src/app.go          +30 -10  ║
-│    ║ Date:   Jan 30, 2026  │   A src/new.go          +12 -0   ║
-│    ╚═══ [j/k] file  [Enter] diff  [Esc] close ═════════════════╝
-●─┘  Merge branch 'feature'              Bob        1h ago  a1b2c
-│    Fix authentication bug              Carol      2h ago  b2c3d
-───────────────────────────────────────────────────────────────────
-                    ⣀⣀⣤⣤⣶⣶⣿⣿⣶⣶⣤⣤⣀⣀
-                   [━━━━━━━━━━]
-───────────────────────────────────────────────────────────────────
-● watching   47/1284 commits   12 branches       [b]ranch [c]lear
+
+**macOS users:** If you see "cannot be opened because it is from an unidentified developer", run:
+
+```bash
+xattr -d com.apple.quarantine /usr/local/bin/gitree
+```
+
+### Go Install
+
+```bash
+go install github.com/nogo/gitree/cmd/gitree@latest
+```
+
+### Build from Source
+
+```bash
+git clone https://github.com/nogo/gitree.git
+cd gitree
+go build -o gitree ./cmd/gitree
 ```
 
 ## Requirements
