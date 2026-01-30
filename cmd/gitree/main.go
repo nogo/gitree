@@ -36,12 +36,17 @@ func main() {
 	}
 	repoPath = absPath
 
+	// Show loading message
+	fmt.Printf("Loading repository: %s\n", repoPath)
+
 	reader := git.NewReader()
 	repo, err := reader.LoadRepository(repoPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+
+	fmt.Printf("Loaded %d commits, %d branches\n", len(repo.Commits), len(repo.Branches))
 
 	// Create watcher (graceful degradation if fails)
 	w, err := watcher.New(repoPath)

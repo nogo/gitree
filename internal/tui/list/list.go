@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/nogo/gitree/internal/domain"
 	"github.com/nogo/gitree/internal/tui/graph"
@@ -13,8 +12,8 @@ import (
 type Model struct {
 	commits           []domain.Commit
 	graph             *graph.Renderer
-	viewport          viewport.Model
 	cursor            int
+	viewOffset        int // first visible row (virtual scrolling)
 	width             int
 	height            int
 	ready             bool
@@ -61,10 +60,7 @@ func (m *Model) SetRepo(repo *domain.Repository) {
 		m.cursor = oldCursor
 	}
 
-	// Update viewport content
-	if m.ready {
-		m.viewport.SetContent(m.renderList())
-	}
+	m.syncViewport()
 }
 
 // SetFilteredCommits updates the list with filtered commits while using
@@ -91,9 +87,7 @@ func (m *Model) SetFilteredCommits(commits []domain.Commit, repo *domain.Reposit
 		m.cursor = oldCursor
 	}
 
-	if m.ready {
-		m.viewport.SetContent(m.renderList())
-	}
+	m.syncViewport()
 }
 
 func (m Model) Init() tea.Cmd { return nil }
@@ -101,14 +95,8 @@ func (m Model) Init() tea.Cmd { return nil }
 func (m *Model) SetSize(w, h int) {
 	m.width = w
 	m.height = h
-	if !m.ready {
-		m.viewport = viewport.New(w, h)
-		m.ready = true
-	} else {
-		m.viewport.Width = w
-		m.viewport.Height = h
-	}
-	m.viewport.SetContent(m.renderList())
+	m.ready = true
+	m.syncViewport()
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
@@ -133,7 +121,6 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		case "G", "end":
 			m.cursorTo(len(m.commits) - 1)
 		}
-		m.viewport.SetContent(m.renderList())
 		m.syncViewport()
 		// Don't pass navigation keys to viewport - we handle scrolling ourselves
 		return m, nil
@@ -146,36 +133,64 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		switch msg.Type {
 		case tea.MouseWheelUp:
 			m.cursorUp(3)
-			m.viewport.SetContent(m.renderList())
 			m.syncViewport()
 			return m, nil
 		case tea.MouseWheelDown:
 			m.cursorDown(3)
-			m.viewport.SetContent(m.renderList())
 			m.syncViewport()
 			return m, nil
 		case tea.MouseLeft:
 			// Click to select row (Y is relative to viewport)
-			clickedRow := m.viewport.YOffset + msg.Y
+			clickedRow := m.viewOffset + msg.Y
 			if clickedRow >= 0 && clickedRow < len(m.commits) {
 				m.cursorTo(clickedRow)
-				m.viewport.SetContent(m.renderList())
 				m.syncViewport()
 			}
 			return m, nil
 		}
 	}
 
-	var cmd tea.Cmd
-	m.viewport, cmd = m.viewport.Update(msg)
-	return m, cmd
+	return m, nil
 }
 
 func (m Model) View() string {
 	if !m.ready {
 		return "Loading..."
 	}
-	return m.viewport.View()
+	return m.renderVisibleRows()
+}
+
+// renderVisibleRows renders only the rows visible in the viewport
+func (m Model) renderVisibleRows() string {
+	if len(m.commits) == 0 {
+		return ""
+	}
+
+	var rows []string
+	endRow := m.viewOffset + m.height
+	if endRow > len(m.commits) {
+		endRow = len(m.commits)
+	}
+
+	for i := m.viewOffset; i < endRow; i++ {
+		rows = append(rows, m.renderRow(i, m.commits[i]))
+
+		// Insert expanded content after selected row
+		if m.expanded && i == m.cursor {
+			commit := m.SelectedCommit()
+			if commit != nil {
+				expandedLines := m.renderExpanded(commit, m.expandedFiles, m.fileCursor, m.fileScrollOffset, m.expandedLoading)
+				rows = append(rows, expandedLines...)
+			}
+		}
+	}
+
+	// Pad to fill viewport height
+	for len(rows) < m.height {
+		rows = append(rows, "")
+	}
+
+	return strings.Join(rows, "\n")
 }
 
 func (m *Model) cursorUp(n int) {
@@ -190,37 +205,38 @@ func (m *Model) cursorTo(n int) {
 	m.cursor = clamp(n, 0, len(m.commits)-1)
 }
 
-// syncViewport keeps cursor in the middle zone when scrolling
+// syncViewport keeps cursor visible and centered when possible
 func (m *Model) syncViewport() {
-	offset := m.viewport.YOffset
+	if m.height <= 0 || len(m.commits) == 0 {
+		return
+	}
+
 	middle := m.height / 2
 
 	// Calculate total lines accounting for expansion
 	totalLines := len(m.commits)
-	cursorLine := m.cursor
 	if m.expanded {
 		totalLines += expandedHeight
-		// Cursor line stays the same, but content after it is shifted
 	}
 
-	// Scroll up: only if cursor goes above visible area
-	if cursorLine < offset {
-		offset = cursorLine
+	// Scroll up: cursor goes above visible area
+	if m.cursor < m.viewOffset {
+		m.viewOffset = m.cursor
 	}
 
-	// Scroll down: keep cursor in upper half once it passes middle
-	// If expanded, we want to see the expanded content
-	viewNeeded := cursorLine
+	// Scroll down: keep cursor visible
+	viewNeeded := m.cursor
 	if m.expanded {
-		viewNeeded = cursorLine + expandedHeight
+		viewNeeded = m.cursor + expandedHeight
 	}
 
-	if viewNeeded > offset+m.height-1 {
-		offset = viewNeeded - m.height + 1
+	if viewNeeded >= m.viewOffset+m.height {
+		m.viewOffset = viewNeeded - m.height + 1
 	}
 
-	if cursorLine > offset+middle {
-		offset = cursorLine - middle
+	// Try to keep cursor in middle zone
+	if m.cursor > m.viewOffset+middle {
+		m.viewOffset = m.cursor - middle
 	}
 
 	// Clamp to valid range
@@ -228,9 +244,7 @@ func (m *Model) syncViewport() {
 	if maxOffset < 0 {
 		maxOffset = 0
 	}
-	offset = clamp(offset, 0, maxOffset)
-
-	m.viewport.SetYOffset(offset)
+	m.viewOffset = clamp(m.viewOffset, 0, maxOffset)
 }
 
 // SelectedCommit returns the currently selected commit
@@ -256,9 +270,6 @@ func (m *Model) SetHighlightedEmails(emails []string) {
 			m.highlightedEmails[strings.ToLower(e)] = true
 		}
 	}
-	if m.ready {
-		m.viewport.SetContent(m.renderList())
-	}
 }
 
 // SetMatchIndices sets which commit indices are search matches (nil = no search)
@@ -271,9 +282,6 @@ func (m *Model) SetMatchIndices(indices []int) {
 			m.matchIndices[i] = true
 		}
 	}
-	if m.ready {
-		m.viewport.SetContent(m.renderList())
-	}
 }
 
 // Commits returns the current commit list
@@ -284,10 +292,7 @@ func (m Model) Commits() []domain.Commit {
 // SetCursor sets the cursor position and syncs viewport
 func (m *Model) SetCursor(pos int) {
 	m.cursorTo(pos)
-	if m.ready {
-		m.viewport.SetContent(m.renderList())
-		m.syncViewport()
-	}
+	m.syncViewport()
 }
 
 // GraphWidth returns the current graph column width
@@ -321,10 +326,7 @@ func (m *Model) Collapse() {
 	m.expandedFiles = nil
 	m.fileCursor = 0
 	m.fileScrollOffset = 0
-	if m.ready {
-		m.viewport.SetContent(m.renderList())
-		m.syncViewport()
-	}
+	m.syncViewport()
 }
 
 // SetExpandedFiles sets the file list for the expanded commit
@@ -333,20 +335,14 @@ func (m *Model) SetExpandedFiles(files []domain.FileChange) {
 	m.expandedLoading = false
 	m.fileCursor = 0
 	m.fileScrollOffset = 0
-	if m.ready {
-		m.viewport.SetContent(m.renderList())
-		m.syncViewport()
-	}
+	m.syncViewport()
 }
 
 // SetExpandedFilesError handles error loading files
 func (m *Model) SetExpandedFilesError() {
 	m.expandedFiles = nil
 	m.expandedLoading = false
-	if m.ready {
-		m.viewport.SetContent(m.renderList())
-		m.syncViewport()
-	}
+	m.syncViewport()
 }
 
 // FileCursor returns the current file cursor position
@@ -380,9 +376,6 @@ func (m *Model) FileCursorUp() {
 		if m.fileCursor < m.fileScrollOffset {
 			m.fileScrollOffset = m.fileCursor
 		}
-		if m.ready {
-			m.viewport.SetContent(m.renderList())
-		}
 	}
 }
 
@@ -394,27 +387,7 @@ func (m *Model) FileCursorDown() {
 		if m.fileCursor >= m.fileScrollOffset+maxVisibleFiles {
 			m.fileScrollOffset = m.fileCursor - maxVisibleFiles + 1
 		}
-		if m.ready {
-			m.viewport.SetContent(m.renderList())
-		}
 	}
-}
-
-func (m Model) renderList() string {
-	var rows []string
-	for i, c := range m.commits {
-		rows = append(rows, m.renderRow(i, c))
-
-		// Insert expanded content after selected row
-		if m.expanded && i == m.cursor {
-			commit := m.SelectedCommit()
-			if commit != nil {
-				expandedLines := m.renderExpanded(commit, m.expandedFiles, m.fileCursor, m.fileScrollOffset, m.expandedLoading)
-				rows = append(rows, expandedLines...)
-			}
-		}
-	}
-	return strings.Join(rows, "\n")
 }
 
 func (m Model) renderRow(i int, c domain.Commit) string {
