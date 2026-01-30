@@ -83,43 +83,67 @@ func (r *Reader) loadCommitsFromRepo(repo *git.Repository, limit int) ([]domain.
 		return []domain.Commit{}, nil
 	}
 
-	// Load commits from HEAD only - this includes all reachable commits
-	// through merge history. Loading from each remote ref separately is
-	// O(refs × commits) and catastrophically slow for repos with many remotes.
-	var commits []domain.Commit
+	// Collect HEAD + local branch hashes (skip remote refs - they cause O(refs×commits))
+	// Local branches are typically few (1-20), remotes can be thousands
+	var branchHashes []plumbing.Hash
+	seenHash := make(map[plumbing.Hash]bool)
 
-	logOpts := &git.LogOptions{
-		From:  head.Hash(),
-		Order: git.LogOrderCommitterTime,
-	}
+	// Add HEAD
+	branchHashes = append(branchHashes, head.Hash())
+	seenHash[head.Hash()] = true
 
-	iter, err := repo.Log(logOpts)
-	if err != nil {
-		return nil, err
-	}
-
-	iter.ForEach(func(c *object.Commit) error {
-		hash := c.Hash.String()
-
-		parents := make([]string, len(c.ParentHashes))
-		for i, p := range c.ParentHashes {
-			parents[i] = p.String()
+	// Add local branches
+	localBranches, _ := repo.Branches()
+	localBranches.ForEach(func(ref *plumbing.Reference) error {
+		if !seenHash[ref.Hash()] {
+			branchHashes = append(branchHashes, ref.Hash())
+			seenHash[ref.Hash()] = true
 		}
-
-		commits = append(commits, domain.Commit{
-			Hash:        hash,
-			ShortHash:   hash[:7],
-			Author:      c.Author.Name,
-			Email:       c.Author.Email,
-			Date:        c.Committer.When,
-			Message:     firstLine(c.Message),
-			FullMessage: c.Message,
-			Parents:     parents,
-			BranchRefs:  branchRefs[hash],
-		})
 		return nil
 	})
-	iter.Close()
+
+	// Load commits from all local branches with deduplication
+	seen := make(map[string]bool)
+	var commits []domain.Commit
+
+	for _, branchHash := range branchHashes {
+		logOpts := &git.LogOptions{
+			From:  branchHash,
+			Order: git.LogOrderCommitterTime,
+		}
+
+		iter, err := repo.Log(logOpts)
+		if err != nil {
+			continue
+		}
+
+		iter.ForEach(func(c *object.Commit) error {
+			hash := c.Hash.String()
+			if seen[hash] {
+				return nil
+			}
+			seen[hash] = true
+
+			parents := make([]string, len(c.ParentHashes))
+			for i, p := range c.ParentHashes {
+				parents[i] = p.String()
+			}
+
+			commits = append(commits, domain.Commit{
+				Hash:        hash,
+				ShortHash:   hash[:7],
+				Author:      c.Author.Name,
+				Email:       c.Author.Email,
+				Date:        c.Committer.When,
+				Message:     firstLine(c.Message),
+				FullMessage: c.Message,
+				Parents:     parents,
+				BranchRefs:  branchRefs[hash],
+			})
+			return nil
+		})
+		iter.Close()
+	}
 
 	// Topological sort: children before parents, with date as tiebreaker
 	commits = topoSortCommits(commits)
