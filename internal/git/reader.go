@@ -310,6 +310,75 @@ func firstLine(s string) string {
 	return s
 }
 
+// LoadFileDiff returns the diff for a specific file in a commit
+func (r *Reader) LoadFileDiff(path string, commitHash string, filePath string) (string, bool, error) {
+	repo, err := git.PlainOpen(path)
+	if err != nil {
+		return "", false, err
+	}
+
+	hash := plumbing.NewHash(commitHash)
+	commit, err := repo.CommitObject(hash)
+	if err != nil {
+		return "", false, err
+	}
+
+	commitTree, err := commit.Tree()
+	if err != nil {
+		return "", false, err
+	}
+
+	var changes object.Changes
+	if commit.NumParents() == 0 {
+		// Initial commit: compare with empty tree
+		changes, err = object.DiffTree(nil, commitTree)
+		if err != nil {
+			return "", false, err
+		}
+	} else {
+		parent, err := commit.Parent(0)
+		if err != nil {
+			return "", false, err
+		}
+		parentTree, err := parent.Tree()
+		if err != nil {
+			return "", false, err
+		}
+		changes, err = object.DiffTree(parentTree, commitTree)
+		if err != nil {
+			return "", false, err
+		}
+	}
+
+	// Find the change for the requested file
+	for _, change := range changes {
+		var changePath string
+		if change.To.Name != "" {
+			changePath = change.To.Name
+		} else {
+			changePath = change.From.Name
+		}
+
+		if changePath == filePath {
+			patch, err := change.Patch()
+			if err != nil {
+				return "", false, err
+			}
+			if patch == nil {
+				return "", true, nil // Binary file
+			}
+			patchStr := patch.String()
+			// Check if it's a binary diff
+			if strings.Contains(patchStr, "Binary files") {
+				return "", true, nil
+			}
+			return patchStr, false, nil
+		}
+	}
+
+	return "", false, nil // File not found
+}
+
 func (r *Reader) LoadFileChanges(path string, commitHash string) ([]domain.FileChange, error) {
 	repo, err := git.PlainOpen(path)
 	if err != nil {

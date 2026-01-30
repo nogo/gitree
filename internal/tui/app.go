@@ -9,6 +9,7 @@ import (
 	"github.com/nogo/gitree/internal/domain"
 	"github.com/nogo/gitree/internal/git"
 	"github.com/nogo/gitree/internal/tui/detail"
+	"github.com/nogo/gitree/internal/tui/diff"
 	"github.com/nogo/gitree/internal/tui/filter"
 	"github.com/nogo/gitree/internal/tui/histogram"
 	"github.com/nogo/gitree/internal/tui/list"
@@ -21,6 +22,7 @@ type Model struct {
 	repoPath            string
 	list                list.Model
 	detail              detail.Model
+	diffView            diff.DiffView
 	branchFilter        filter.BranchFilter
 	authorFilter        filter.AuthorFilter
 	authorHighlight     filter.AuthorHighlight
@@ -29,6 +31,7 @@ type Model struct {
 	watcher             *watcher.Watcher
 	watching            bool
 	showDetail          bool
+	showDiff            bool
 	showBranchFilter    bool
 	showAuthorFilter    bool
 	showAuthorHighlight bool
@@ -51,6 +54,7 @@ func NewModel(repo *domain.Repository, repoPath string, w *watcher.Watcher) Mode
 		repoPath:        repoPath,
 		list:            list.New(repo),
 		detail:          d,
+		diffView:        diff.New(),
 		branchFilter:    filter.NewBranchFilter(repo.Branches),
 		authorFilter:    filter.NewAuthorFilter(repo.Commits),
 		authorHighlight: filter.NewAuthorHighlight(repo.Commits),
@@ -82,6 +86,30 @@ func (m Model) reloadRepo() tea.Cmd {
 		reader := git.NewReader()
 		repo, err := reader.LoadRepository(m.repoPath)
 		return RepoLoadedMsg{Repo: repo, Err: err}
+	}
+}
+
+// loadFileDiff returns a command that loads the diff for the current file
+func (m Model) loadFileDiff() tea.Cmd {
+	commit := m.detail.Commit()
+	if commit == nil {
+		return nil
+	}
+	filePath := m.diffView.CurrentFile()
+	fileIndex := m.diffView.FileIndex()
+	repoPath := m.repoPath
+	commitHash := commit.Hash
+
+	return func() tea.Msg {
+		reader := git.NewReader()
+		diff, isBinary, err := reader.LoadFileDiff(repoPath, commitHash, filePath)
+		return DiffLoadedMsg{
+			FilePath:  filePath,
+			Diff:      diff,
+			IsBinary:  isBinary,
+			FileIndex: fileIndex,
+			Err:       err,
+		}
 	}
 }
 
@@ -217,12 +245,53 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case DiffLoadedMsg:
+		if msg.Err == nil {
+			m.diffView.SetDiff(msg.Diff, msg.IsBinary)
+		} else {
+			m.diffView.SetDiff("", false)
+		}
+		return m, nil
+
 	case tea.KeyMsg:
+		// Handle diff view keys
+		if m.showDiff {
+			switch msg.String() {
+			case "q", "esc":
+				m.diffView.Hide()
+				m.showDiff = false
+				return m, nil
+			case "h", "left":
+				// Previous file
+				if m.diffView.PrevFile() {
+					return m, m.loadFileDiff()
+				}
+				return m, nil
+			case "l", "right":
+				// Next file
+				if m.diffView.NextFile() {
+					return m, m.loadFileDiff()
+				}
+				return m, nil
+			}
+			m.diffView, _ = m.diffView.Update(msg)
+			return m, nil
+		}
+
 		// Handle detail view keys
 		if m.showDetail {
 			switch msg.String() {
 			case "q", "ctrl+c", "esc":
 				m.showDetail = false
+				return m, nil
+			case "enter":
+				// Open diff for selected file
+				if m.detail.HasFiles() {
+					m.diffView.Show(m.detail.Files(), m.detail.FileCursor())
+					m.diffView.SetSize(m.width, m.height)
+					m.showDiff = true
+					return m, m.loadFileDiff()
+				}
 				return m, nil
 			}
 			m.detail, _ = m.detail.Update(msg)
@@ -323,6 +392,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.histogram.Recalculate(m.repo.Commits, msg.Width)
 		m.recalculateListHeight()
 		m.detail.SetSize(msg.Width, msg.Height)
+		m.diffView.SetSize(msg.Width, msg.Height)
 		m.branchFilter.SetSize(msg.Width, msg.Height)
 		m.authorFilter.SetSize(msg.Width, msg.Height)
 		m.authorHighlight.SetSize(msg.Width, msg.Height)
@@ -509,6 +579,9 @@ func (m Model) View() string {
 	if m.showAuthorHighlight {
 		return m.authorHighlight.View()
 	}
+	if m.showDiff {
+		return m.renderWithDiff()
+	}
 	if m.showDetail {
 		return m.renderWithDetail()
 	}
@@ -521,6 +594,15 @@ func (m Model) renderWithDetail() string {
 		m.width, m.height,
 		lipgloss.Center, lipgloss.Center,
 		m.detail.View(),
+	)
+}
+
+// renderWithDiff shows the diff view as a centered overlay
+func (m Model) renderWithDiff() string {
+	return lipgloss.Place(
+		m.width, m.height,
+		lipgloss.Center, lipgloss.Center,
+		m.diffView.View(),
 	)
 }
 

@@ -17,6 +17,7 @@ type Model struct {
 	repoPath     string
 	width        int
 	height       int
+	fileCursor   int
 }
 
 func New() Model {
@@ -27,6 +28,7 @@ func (m *Model) SetCommit(c *domain.Commit) {
 	m.commit = c
 	m.files = nil
 	m.filesLoading = true
+	m.fileCursor = 0
 }
 
 func (m *Model) SetRepoPath(path string) {
@@ -66,7 +68,53 @@ func (m *Model) SetSize(w, h int) {
 	m.height = h
 }
 
+// FileCursor returns the current file cursor position
+func (m Model) FileCursor() int {
+	return m.fileCursor
+}
+
+// Files returns the list of file changes
+func (m Model) Files() []domain.FileChange {
+	return m.files
+}
+
+// HasFiles returns true if there are files to navigate
+func (m Model) HasFiles() bool {
+	return len(m.files) > 0
+}
+
+// SelectedFile returns the currently selected file, or nil if none
+func (m Model) SelectedFile() *domain.FileChange {
+	if m.fileCursor >= 0 && m.fileCursor < len(m.files) {
+		return &m.files[m.fileCursor]
+	}
+	return nil
+}
+
+// Commit returns the current commit
+func (m Model) Commit() *domain.Commit {
+	return m.commit
+}
+
+// RepoPath returns the repository path
+func (m Model) RepoPath() string {
+	return m.repoPath
+}
+
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "j", "down":
+			if len(m.files) > 0 && m.fileCursor < len(m.files)-1 {
+				m.fileCursor++
+			}
+		case "k", "up":
+			if m.fileCursor > 0 {
+				m.fileCursor--
+			}
+		}
+	}
 	return m, nil
 }
 
@@ -200,30 +248,59 @@ func (m Model) renderFiles() string {
 	)
 	headerLine := FileSectionStyle.Render(header) + "  " + stats
 
-	// File list (show first 10, then summary)
+	// File list with cursor (show up to 10, scrolled around cursor)
 	maxFiles := 10
 	var lines []string
 	lines = append(lines, headerLine)
 
-	displayCount := len(m.files)
-	if displayCount > maxFiles {
-		displayCount = maxFiles
+	// Calculate visible range around cursor
+	start := 0
+	end := len(m.files)
+	if len(m.files) > maxFiles {
+		// Center the view around the cursor
+		start = m.fileCursor - maxFiles/2
+		if start < 0 {
+			start = 0
+		}
+		end = start + maxFiles
+		if end > len(m.files) {
+			end = len(m.files)
+			start = end - maxFiles
+			if start < 0 {
+				start = 0
+			}
+		}
 	}
 
-	for i := 0; i < displayCount; i++ {
+	for i := start; i < end; i++ {
 		f := m.files[i]
-		lines = append(lines, m.renderFileLine(f))
+		lines = append(lines, m.renderFileLineWithCursor(f, i == m.fileCursor))
 	}
 
 	if len(m.files) > maxFiles {
-		remaining := len(m.files) - maxFiles
-		lines = append(lines, LabelStyle.Render(fmt.Sprintf("  ... and %d more files", remaining)))
+		if start > 0 || end < len(m.files) {
+			lines = append(lines, LabelStyle.Render(fmt.Sprintf("  ... %d files total", len(m.files))))
+		}
 	}
+
+	// Add navigation hint
+	lines = append(lines, "")
+	lines = append(lines, LabelStyle.Render("[↑/↓] select file  [Enter] view diff  [Esc] close"))
 
 	return strings.Join(lines, "\n")
 }
 
 func (m Model) renderFileLine(f domain.FileChange) string {
+	return m.renderFileLineWithCursor(f, false)
+}
+
+func (m Model) renderFileLineWithCursor(f domain.FileChange, selected bool) string {
+	// Cursor indicator
+	cursor := "  "
+	if selected {
+		cursor = "> "
+	}
+
 	// Status indicator
 	var statusStr string
 	switch f.Status {
@@ -251,5 +328,9 @@ func (m Model) renderFileLine(f domain.FileChange) string {
 		DeletionsStyle.Render(fmt.Sprintf("-%d", f.Deletions)),
 	)
 
-	return fmt.Sprintf("  %s  %s  %s", statusStr, FilePathStyle.Render(path), stats)
+	line := fmt.Sprintf("%s%s  %s  %s", cursor, statusStr, FilePathStyle.Render(path), stats)
+	if selected {
+		return SelectedFileStyle.Render(line)
+	}
+	return line
 }

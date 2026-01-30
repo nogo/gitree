@@ -10,3 +10,12 @@ type RepoLoadedMsg struct {
 	Repo *domain.Repository
 	Err  error
 }
+
+// DiffLoadedMsg carries loaded diff content for a file
+type DiffLoadedMsg struct {
+	FilePath  string
+	Diff      string
+	IsBinary  bool
+	FileIndex int
+	Err       error
+}

@@ -45,4 +45,7 @@ var (
 
 	FilePathStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("252"))
+
+	SelectedFileStyle = lipgloss.NewStyle().
+				Bold(true)
 )
