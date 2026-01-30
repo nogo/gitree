@@ -118,10 +118,18 @@ func (m Model) renderTwoColumnExpanded(commit *domain.Commit, files []domain.Fil
 		lines = append(lines, ExpandedBorderStyle.Render("║")+" "+left+" "+ExpandedBorderStyle.Render("│")+" "+right+" "+ExpandedBorderStyle.Render("║"))
 	}
 
-	// Bottom border with help
-	help := "[↑/↓] file  [Enter] diff  [Esc] close"
-	helpPadded := padCenter(help, totalWidth)
-	lines = append(lines, ExpandedBorderStyle.Render("╚")+ExpandedHelpStyle.Render(helpPadded)+ExpandedBorderStyle.Render("╝"))
+	// Bottom border with help text centered
+	// Inner width must match top border: leftWidth + 1 (╤) + rightWidth = totalWidth
+	help := " [↑/↓] file  [Enter] diff  [Esc] close "
+	borderWidth := totalWidth
+	helpLen := len(help)
+	if helpLen > borderWidth {
+		helpLen = borderWidth
+	}
+	leftBorder := (borderWidth - helpLen) / 2
+	rightBorder := borderWidth - helpLen - leftBorder
+	bottomBorder := "╚" + strings.Repeat("═", leftBorder) + help + strings.Repeat("═", rightBorder) + "╝"
+	lines = append(lines, ExpandedBorderStyle.Render(bottomBorder))
 
 	return lines
 }
@@ -153,10 +161,17 @@ func (m Model) renderSingleColumnExpanded(commit *domain.Commit, files []domain.
 		lines = append(lines, m.wrapInBorder("", totalWidth))
 	}
 
-	// Bottom with help
-	help := "[↑/↓] file  [Enter] diff  [Esc] close"
-	helpPadded := padCenter(help, totalWidth-2)
-	lines = append(lines, ExpandedBorderStyle.Render("╚")+ExpandedHelpStyle.Render(helpPadded)+ExpandedBorderStyle.Render("╝"))
+	// Bottom border with help text centered
+	help := " [↑/↓] file  [Enter] diff  [Esc] close "
+	borderWidth := totalWidth - 2 // -2 for ╚ and ╝
+	helpLen := len(help)
+	if helpLen > borderWidth {
+		helpLen = borderWidth
+	}
+	leftBorder := (borderWidth - helpLen) / 2
+	rightBorder := borderWidth - helpLen - leftBorder
+	bottomBorder := "╚" + strings.Repeat("═", leftBorder) + help + strings.Repeat("═", rightBorder) + "╝"
+	lines = append(lines, ExpandedBorderStyle.Render(bottomBorder))
 
 	return lines
 }
