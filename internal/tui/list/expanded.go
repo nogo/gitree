@@ -62,35 +62,167 @@ var (
 // Returns multiple lines that should be inserted after the commit row
 func (m Model) renderExpanded(commit *domain.Commit, files []domain.FileChange, fileCursor int, fileScrollOffset int) []string {
 	graphWidth := m.graph.Width()
-	// Line structure: "  " (2) + graphCont (graphWidth) + box
-	// Single column box: ╔ + (n-2) ═'s + ╗ = n chars wide
-	// So total line = 2 + graphWidth + boxWidth = m.width
-	// boxWidth = m.width - graphWidth - 2
 	boxWidth := m.width - graphWidth - 2
 
 	if boxWidth < 30 {
 		boxWidth = 30
 	}
 
-	// Determine layout mode
-	useTwoColumns := m.width >= minTwoColumnWidth
+	graphCont := m.graph.RenderContinuation(m.cursor)
+	innerWidth := boxWidth - 4 // space inside borders (║ + space + content + space + ║)
 
-	var lines []string
+	// Build content lines
+	var contentLines []string
 
-	if useTwoColumns {
-		lines = m.renderTwoColumnExpanded(commit, files, fileCursor, fileScrollOffset, boxWidth)
-	} else {
-		lines = m.renderSingleColumnExpanded(commit, files, fileCursor, fileScrollOffset, boxWidth)
+	// Commit info
+	if commit != nil {
+		contentLines = append(contentLines, fmt.Sprintf("Commit: %s", ExpandedHashStyle.Render(commit.Hash[:12])))
+		contentLines = append(contentLines, fmt.Sprintf("Author: %s <%s>", commit.Author, commit.Email))
+		contentLines = append(contentLines, fmt.Sprintf("Date:   %s", commit.Date.Format("Jan 2, 2006 15:04")))
+		if len(commit.Parents) > 0 {
+			parentShort := commit.Parents[0]
+			if len(parentShort) > 7 {
+				parentShort = parentShort[:7]
+			}
+			contentLines = append(contentLines, fmt.Sprintf("Parent: %s", parentShort))
+		}
+		contentLines = append(contentLines, "") // blank line
 	}
 
-	// Prepend graph continuation to each line
-	graphCont := m.graph.RenderContinuation(m.cursor)
+	// Files section
+	if len(files) > 0 {
+		// Calculate totals
+		totalAdd, totalDel := 0, 0
+		for _, f := range files {
+			totalAdd += f.Additions
+			totalDel += f.Deletions
+		}
+		contentLines = append(contentLines, fmt.Sprintf("Files (%d)  %s %s",
+			len(files),
+			AdditionsStyle.Render(fmt.Sprintf("+%d", totalAdd)),
+			DeletionsStyle.Render(fmt.Sprintf("-%d", totalDel))))
+
+		// Show files with cursor
+		visibleFiles := maxVisibleFiles
+		if len(files) < visibleFiles {
+			visibleFiles = len(files)
+		}
+		// Adjust scroll
+		if fileCursor < fileScrollOffset {
+			fileScrollOffset = fileCursor
+		}
+		if fileCursor >= fileScrollOffset+visibleFiles {
+			fileScrollOffset = fileCursor - visibleFiles + 1
+		}
+		endIdx := fileScrollOffset + visibleFiles
+		if endIdx > len(files) {
+			endIdx = len(files)
+		}
+
+		for i := fileScrollOffset; i < endIdx; i++ {
+			f := files[i]
+			cursor := "  "
+			if i == fileCursor {
+				cursor = "> "
+			}
+			status := "M"
+			statusStyle := FileModifiedStyle
+			switch f.Status {
+			case domain.FileAdded:
+				status = "A"
+				statusStyle = FileAddedStyle
+			case domain.FileDeleted:
+				status = "D"
+				statusStyle = FileDeletedStyle
+			case domain.FileRenamed:
+				status = "R"
+				statusStyle = FileRenamedStyle
+			}
+			// Truncate path to fit
+			maxPath := innerWidth - 20
+			if maxPath < 10 {
+				maxPath = 10
+			}
+			path := f.Path
+			if len(path) > maxPath {
+				path = path[:maxPath-1] + "…"
+			}
+			fileLine := fmt.Sprintf("%s%s %s %s %s",
+				cursor,
+				statusStyle.Render(status),
+				path,
+				AdditionsStyle.Render(fmt.Sprintf("+%d", f.Additions)),
+				DeletionsStyle.Render(fmt.Sprintf("-%d", f.Deletions)))
+			contentLines = append(contentLines, fileLine)
+		}
+	}
+
+	// Pad to fixed height
+	for len(contentLines) < expandedHeight-3 { // -3 for top, bottom, help
+		contentLines = append(contentLines, "")
+	}
+
+	// Build result with borders
 	var result []string
-	for _, line := range lines {
+
+	// Top border
+	topBorder := ExpandedBorderStyle.Render("╔" + strings.Repeat("═", boxWidth-2) + "╗")
+	result = append(result, "  "+graphCont+topBorder)
+
+	// Content rows
+	for _, content := range contentLines {
+		// Truncate and pad content
+		contentDisplay := truncateToWidth(content, innerWidth)
+		padded := contentDisplay + strings.Repeat(" ", innerWidth-displayLen(contentDisplay))
+		line := ExpandedBorderStyle.Render("║") + " " + padded + " " + ExpandedBorderStyle.Render("║")
 		result = append(result, "  "+graphCont+line)
 	}
 
+	// Help line
+	help := "[↑/↓] file  [Enter] diff  [Esc] close"
+	helpPad := innerWidth - len(help)
+	if helpPad < 0 {
+		helpPad = 0
+	}
+	helpLine := ExpandedHelpStyle.Render(help) + strings.Repeat(" ", helpPad)
+	result = append(result, "  "+graphCont+ExpandedBorderStyle.Render("║")+" "+helpLine+" "+ExpandedBorderStyle.Render("║"))
+
+	// Bottom border
+	bottomBorder := ExpandedBorderStyle.Render("╚" + strings.Repeat("═", boxWidth-2) + "╝")
+	result = append(result, "  "+graphCont+bottomBorder)
+
 	return result
+}
+
+// truncateToWidth truncates a string (with ANSI codes) to a display width
+func truncateToWidth(s string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	var result strings.Builder
+	displayCount := 0
+	inEscape := false
+
+	for _, r := range s {
+		if r == '\x1b' {
+			inEscape = true
+			result.WriteRune(r)
+			continue
+		}
+		if inEscape {
+			result.WriteRune(r)
+			if r == 'm' {
+				inEscape = false
+			}
+			continue
+		}
+		if displayCount >= width {
+			break
+		}
+		result.WriteRune(r)
+		displayCount++
+	}
+	return result.String()
 }
 
 func (m Model) renderTwoColumnExpanded(commit *domain.Commit, files []domain.FileChange, fileCursor int, fileScrollOffset int, totalWidth int) []string {
