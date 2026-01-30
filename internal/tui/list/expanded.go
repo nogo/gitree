@@ -206,17 +206,17 @@ func (m Model) renderMetadataColumn(commit *domain.Commit, width int) []string {
 	// Hash
 	hashLabel := ExpandedLabelStyle.Render("Commit:")
 	hashValue := ExpandedHashStyle.Render(truncateStr(commit.Hash, width-10))
-	lines = append(lines, hashLabel+" "+hashValue)
+	lines = append(lines, truncateWithAnsi(hashLabel+" "+hashValue, width))
 
 	// Author
 	authorLabel := ExpandedLabelStyle.Render("Author:")
 	authorValue := ExpandedValueStyle.Render(truncateStr(fmt.Sprintf("%s <%s>", commit.Author, commit.Email), width-10))
-	lines = append(lines, authorLabel+" "+authorValue)
+	lines = append(lines, truncateWithAnsi(authorLabel+" "+authorValue, width))
 
 	// Date
 	dateLabel := ExpandedLabelStyle.Render("Date:")
 	dateValue := ExpandedValueStyle.Render(commit.Date.Format("Jan 2, 2006 15:04"))
-	lines = append(lines, dateLabel+"   "+dateValue)
+	lines = append(lines, truncateWithAnsi(dateLabel+"   "+dateValue, width))
 
 	// Parents
 	if len(commit.Parents) > 0 {
@@ -230,7 +230,7 @@ func (m Model) renderMetadataColumn(commit *domain.Commit, width int) []string {
 			}
 		}
 		parentValue := ExpandedValueStyle.Render(strings.Join(parentHashes, ", "))
-		lines = append(lines, parentLabel+" "+parentValue)
+		lines = append(lines, truncateWithAnsi(parentLabel+" "+parentValue, width))
 	}
 
 	// Empty line
@@ -264,13 +264,13 @@ func (m Model) renderFilesColumn(files []domain.FileChange, cursor int, scrollOf
 		totalDel += f.Deletions
 	}
 
-	// Header
+	// Header - truncate to fit width
 	header := fmt.Sprintf("Files (%d)  %s %s",
 		len(files),
 		AdditionsStyle.Render(fmt.Sprintf("+%d", totalAdd)),
 		DeletionsStyle.Render(fmt.Sprintf("-%d", totalDel)),
 	)
-	lines = append(lines, header)
+	lines = append(lines, truncateWithAnsi(header, width))
 
 	// File list with scrolling
 	visibleFiles := maxVisibleFiles
@@ -333,7 +333,8 @@ func (m Model) renderFilesColumn(files []domain.FileChange, cursor int, scrollOf
 		if selected {
 			line = FileSelectedStyle.Render(line)
 		}
-		lines = append(lines, line)
+		// Ensure line fits within column width
+		lines = append(lines, truncateWithAnsi(line, width))
 	}
 
 	// Scroll indicator
@@ -356,9 +357,45 @@ func (m Model) wrapInBorder(content string, totalWidth int) string {
 func padRight(s string, width int) string {
 	sLen := displayLen(s)
 	if sLen >= width {
-		return s
+		// Truncate if too long (preserving ANSI codes is complex, so just cut)
+		return truncateWithAnsi(s, width)
 	}
 	return s + strings.Repeat(" ", width-sLen)
+}
+
+// truncateWithAnsi truncates a string to width display characters, handling ANSI codes
+func truncateWithAnsi(s string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	var result strings.Builder
+	displayCount := 0
+	inEscape := false
+
+	for _, r := range s {
+		if r == '\x1b' {
+			inEscape = true
+			result.WriteRune(r)
+			continue
+		}
+		if inEscape {
+			result.WriteRune(r)
+			if r == 'm' {
+				inEscape = false
+			}
+			continue
+		}
+		if displayCount >= width {
+			break
+		}
+		result.WriteRune(r)
+		displayCount++
+	}
+	// Reset any open ANSI sequences
+	if inEscape || displayCount > 0 {
+		result.WriteString("\x1b[0m")
+	}
+	return result.String()
 }
 
 func padCenter(s string, width int) string {
