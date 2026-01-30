@@ -7,12 +7,16 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/nogo/gitree/internal/domain"
+	"github.com/nogo/gitree/internal/git"
 )
 
 type Model struct {
-	commit *domain.Commit
-	width  int
-	height int
+	commit       *domain.Commit
+	files        []domain.FileChange
+	filesLoading bool
+	repoPath     string
+	width        int
+	height       int
 }
 
 func New() Model {
@@ -21,6 +25,40 @@ func New() Model {
 
 func (m *Model) SetCommit(c *domain.Commit) {
 	m.commit = c
+	m.files = nil
+	m.filesLoading = true
+}
+
+func (m *Model) SetRepoPath(path string) {
+	m.repoPath = path
+}
+
+func (m *Model) SetFiles(files []domain.FileChange) {
+	m.files = files
+	m.filesLoading = false
+}
+
+func (m *Model) SetFilesError() {
+	m.files = nil
+	m.filesLoading = false
+}
+
+func (m Model) LoadFilesCmd() tea.Cmd {
+	if m.commit == nil || m.repoPath == "" {
+		return nil
+	}
+	hash := m.commit.Hash
+	path := m.repoPath
+	return func() tea.Msg {
+		reader := git.NewReader()
+		files, err := reader.LoadFileChanges(path, hash)
+		return FileChangesLoadedMsg{Files: files, Err: err}
+	}
+}
+
+type FileChangesLoadedMsg struct {
+	Files []domain.FileChange
+	Err   error
 }
 
 func (m *Model) SetSize(w, h int) {
@@ -45,6 +83,7 @@ func (m Model) View() string {
 	message := m.renderMessage(c)
 	parents := m.renderParents(c)
 	refs := m.renderRefs(c)
+	files := m.renderFiles()
 
 	content := lipgloss.JoinVertical(
 		lipgloss.Left,
@@ -65,6 +104,13 @@ func (m Model) View() string {
 			refs,
 		)
 	}
+
+	content = lipgloss.JoinVertical(
+		lipgloss.Left,
+		content,
+		"",
+		files,
+	)
 
 	// Account for border and padding in dimensions
 	innerWidth := m.width - 6
@@ -127,4 +173,83 @@ func (m Model) renderRefs(c *domain.Commit) string {
 	}
 	label := LabelStyle.Render("Refs:")
 	return fmt.Sprintf("%s  %s", label, strings.Join(c.BranchRefs, ", "))
+}
+
+func (m Model) renderFiles() string {
+	if m.filesLoading {
+		return LabelStyle.Render("Files: Loading...")
+	}
+
+	if m.files == nil || len(m.files) == 0 {
+		return LabelStyle.Render("Files: (none)")
+	}
+
+	// Calculate totals
+	totalAdditions := 0
+	totalDeletions := 0
+	for _, f := range m.files {
+		totalAdditions += f.Additions
+		totalDeletions += f.Deletions
+	}
+
+	// Header line
+	header := fmt.Sprintf("Files Changed (%d)", len(m.files))
+	stats := fmt.Sprintf("%s %s",
+		AdditionsStyle.Render(fmt.Sprintf("+%d", totalAdditions)),
+		DeletionsStyle.Render(fmt.Sprintf("-%d", totalDeletions)),
+	)
+	headerLine := FileSectionStyle.Render(header) + "  " + stats
+
+	// File list (show first 10, then summary)
+	maxFiles := 10
+	var lines []string
+	lines = append(lines, headerLine)
+
+	displayCount := len(m.files)
+	if displayCount > maxFiles {
+		displayCount = maxFiles
+	}
+
+	for i := 0; i < displayCount; i++ {
+		f := m.files[i]
+		lines = append(lines, m.renderFileLine(f))
+	}
+
+	if len(m.files) > maxFiles {
+		remaining := len(m.files) - maxFiles
+		lines = append(lines, LabelStyle.Render(fmt.Sprintf("  ... and %d more files", remaining)))
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+func (m Model) renderFileLine(f domain.FileChange) string {
+	// Status indicator
+	var statusStr string
+	switch f.Status {
+	case domain.FileAdded:
+		statusStr = FileAddedStyle.Render("A")
+	case domain.FileModified:
+		statusStr = FileModifiedStyle.Render("M")
+	case domain.FileDeleted:
+		statusStr = FileDeletedStyle.Render("D")
+	case domain.FileRenamed:
+		statusStr = FileRenamedStyle.Render("R")
+	case domain.FileCopied:
+		statusStr = FileRenamedStyle.Render("C")
+	}
+
+	// Path
+	path := f.Path
+	if f.Status == domain.FileRenamed && f.OldPath != "" {
+		path = f.OldPath + " → " + f.Path
+	}
+
+	// Stats
+	stats := fmt.Sprintf("%s %s",
+		AdditionsStyle.Render(fmt.Sprintf("+%d", f.Additions)),
+		DeletionsStyle.Render(fmt.Sprintf("-%d", f.Deletions)),
+	)
+
+	return fmt.Sprintf("  %s  %s  %s", statusStr, FilePathStyle.Render(path), stats)
 }

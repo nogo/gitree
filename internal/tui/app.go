@@ -44,11 +44,13 @@ type Model struct {
 }
 
 func NewModel(repo *domain.Repository, repoPath string, w *watcher.Watcher) Model {
+	d := detail.New()
+	d.SetRepoPath(repoPath)
 	return Model{
 		repo:            repo,
 		repoPath:        repoPath,
 		list:            list.New(repo),
-		detail:          detail.New(),
+		detail:          d,
 		branchFilter:    filter.NewBranchFilter(repo.Branches),
 		authorFilter:    filter.NewAuthorFilter(repo.Commits),
 		authorHighlight: filter.NewAuthorHighlight(repo.Commits),
@@ -207,6 +209,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case detail.FileChangesLoadedMsg:
+		if msg.Err == nil {
+			m.detail.SetFiles(msg.Files)
+		} else {
+			m.detail.SetFilesError()
+		}
+		return m, nil
+
 	case tea.KeyMsg:
 		// Handle detail view keys
 		if m.showDetail {
@@ -229,6 +239,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.detail.SetCommit(selected)
 				m.detail.SetSize(m.width, m.height)
 				m.showDetail = true
+				return m, m.detail.LoadFilesCmd()
 			}
 			return m, nil
 

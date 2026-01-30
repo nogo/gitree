@@ -7,6 +7,7 @@ import (
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/go-git/go-git/v5/utils/merkletrie"
 	"github.com/nogo/gitree/internal/domain"
 )
 
@@ -307,4 +308,85 @@ func firstLine(s string) string {
 		return s[:idx]
 	}
 	return s
+}
+
+func (r *Reader) LoadFileChanges(path string, commitHash string) ([]domain.FileChange, error) {
+	repo, err := git.PlainOpen(path)
+	if err != nil {
+		return nil, err
+	}
+
+	hash := plumbing.NewHash(commitHash)
+	commit, err := repo.CommitObject(hash)
+	if err != nil {
+		return nil, err
+	}
+
+	commitTree, err := commit.Tree()
+	if err != nil {
+		return nil, err
+	}
+
+	var changes object.Changes
+	if commit.NumParents() == 0 {
+		// Initial commit: compare with empty tree
+		changes, err = object.DiffTree(nil, commitTree)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		parent, err := commit.Parent(0)
+		if err != nil {
+			return nil, err
+		}
+		parentTree, err := parent.Tree()
+		if err != nil {
+			return nil, err
+		}
+		changes, err = object.DiffTree(parentTree, commitTree)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	var result []domain.FileChange
+	for _, change := range changes {
+		fc := domain.FileChange{}
+
+		// Determine status and path
+		action, err := change.Action()
+		if err != nil {
+			continue
+		}
+
+		switch action {
+		case merkletrie.Insert:
+			fc.Status = domain.FileAdded
+			fc.Path = change.To.Name
+		case merkletrie.Delete:
+			fc.Status = domain.FileDeleted
+			fc.Path = change.From.Name
+		case merkletrie.Modify:
+			fc.Status = domain.FileModified
+			fc.Path = change.To.Name
+			// Check for rename
+			if change.From.Name != change.To.Name {
+				fc.Status = domain.FileRenamed
+				fc.OldPath = change.From.Name
+			}
+		}
+
+		// Get line stats
+		patch, err := change.Patch()
+		if err == nil && patch != nil {
+			for _, fileStat := range patch.Stats() {
+				fc.Additions += fileStat.Addition
+				fc.Deletions += fileStat.Deletion
+			}
+		}
+
+		result = append(result, fc)
+	}
+
+	return result, nil
 }

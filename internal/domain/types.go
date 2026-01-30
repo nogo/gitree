@@ -27,3 +27,21 @@ type Repository struct {
 	Branches []Branch
 	HEAD     string // current HEAD hash or branch name
 }
+
+type FileStatus int
+
+const (
+	FileAdded FileStatus = iota
+	FileModified
+	FileDeleted
+	FileRenamed
+	FileCopied
+)
+
+type FileChange struct {
+	Path      string
+	Status    FileStatus
+	OldPath   string // for renames
+	Additions int
+	Deletions int
+}
