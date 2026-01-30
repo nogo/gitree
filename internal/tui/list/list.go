@@ -11,13 +11,14 @@ import (
 )
 
 type Model struct {
-	commits  []domain.Commit
-	graph    *graph.Renderer
-	viewport viewport.Model
-	cursor   int
-	width    int
-	height   int
-	ready    bool
+	commits           []domain.Commit
+	graph             *graph.Renderer
+	viewport          viewport.Model
+	cursor            int
+	width             int
+	height            int
+	ready             bool
+	highlightedEmails map[string]bool // emails to highlight (nil = no highlight)
 }
 
 func New(repo *domain.Repository) Model {
@@ -205,6 +206,21 @@ func (m Model) CommitCount() int {
 	return len(m.commits)
 }
 
+// SetHighlightedEmails sets which author emails to highlight (nil = no highlight)
+func (m *Model) SetHighlightedEmails(emails []string) {
+	if len(emails) == 0 {
+		m.highlightedEmails = nil
+	} else {
+		m.highlightedEmails = make(map[string]bool)
+		for _, e := range emails {
+			m.highlightedEmails[strings.ToLower(e)] = true
+		}
+	}
+	if m.ready {
+		m.viewport.SetContent(m.renderList())
+	}
+}
+
 // GraphWidth returns the current graph column width
 func (m Model) GraphWidth() int {
 	if m.graph == nil {
@@ -224,6 +240,13 @@ func (m Model) renderList() string {
 func (m Model) renderRow(i int, c domain.Commit) string {
 	selected := i == m.cursor
 
+	// Determine if this commit should be dimmed (highlight active but not matching)
+	dimmed := false
+	if m.highlightedEmails != nil {
+		email := strings.ToLower(c.Email)
+		dimmed = !m.highlightedEmails[email]
+	}
+
 	// Cursor indicator (2 chars)
 	cursor := "  "
 	if selected {
@@ -232,6 +255,9 @@ func (m Model) renderRow(i int, c domain.Commit) string {
 
 	// Graph cell from renderer (dynamic width)
 	graphCell := m.graph.RenderGraphCell(i)
+	if dimmed {
+		graphCell = m.graph.RenderGraphCellDimmed(i)
+	}
 	graphWidth := m.graph.Width()
 
 	// Branch badges
@@ -273,9 +299,16 @@ func (m Model) renderRow(i int, c domain.Commit) string {
 
 	// Apply styles to individual parts (non-selected rows)
 	if !selected {
-		hash = HashStyle.Render(hash)
-		author = AuthorStyle.Render(author)
-		date = DateStyle.Render(date)
+		if dimmed {
+			hash = DimmedHashStyle.Render(hash)
+			author = DimmedAuthorStyle.Render(author)
+			date = DimmedDateStyle.Render(date)
+			msgDisplay = DimmedMessageStyle.Render(msgDisplay)
+		} else {
+			hash = HashStyle.Render(hash)
+			author = AuthorStyle.Render(author)
+			date = DateStyle.Render(date)
+		}
 	}
 
 	// New column order: cursor | graph | message | author | date | hash

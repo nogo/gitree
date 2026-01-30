@@ -18,4 +18,17 @@ var (
 
 	MessageStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("252"))
+
+	// Dimmed styles for non-highlighted commits
+	DimmedHashStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("239"))
+
+	DimmedAuthorStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("239"))
+
+	DimmedDateStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("239"))
+
+	DimmedMessageStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("239"))
 )

@@ -55,6 +55,14 @@ func (r *Renderer) RenderGraphCell(i int) string {
 	return r.rowRender.RenderRow(i)
 }
 
+// RenderGraphCellDimmed returns a dimmed graph portion for commit at index
+func (r *Renderer) RenderGraphCellDimmed(i int) string {
+	if i < 0 || i >= len(r.commits) {
+		return strings.Repeat(" ", r.Width())
+	}
+	return r.rowRender.RenderRowDimmed(i)
+}
+
 // RenderBranchBadges returns styled branch labels for commit
 // Merges local and remote branches with same name (e.g., "main | origin")
 func (r *Renderer) RenderBranchBadges(c domain.Commit) string {

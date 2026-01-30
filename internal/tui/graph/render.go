@@ -141,6 +141,102 @@ func (r *RowRenderer) colorForLane(lane int) lipgloss.Style {
 	return lipgloss.NewStyle().Foreground(colors[lane%len(colors)])
 }
 
+// DimmedGraphStyle is used for dimmed graph elements
+var DimmedGraphStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("239"))
+
+// RenderRowDimmed produces a dimmed graph string for a given row index
+func (r *RowRenderer) RenderRowDimmed(row int) string {
+	if row < 0 || row >= len(r.layout.Nodes) {
+		return strings.Repeat(" ", r.layout.MaxLanes*2)
+	}
+
+	node := r.layout.Nodes[row]
+	activeLanes := r.layout.ActiveLanesAt(row)
+
+	var result strings.Builder
+
+	for lane := 0; lane < r.layout.MaxLanes; lane++ {
+		var cellChar rune
+		hasContent := false
+
+		if lane == node.Lane {
+			cellChar = CharNode
+			hasContent = true
+		} else if activeLanes[lane] {
+			cellChar = CharVertical
+			hasContent = true
+		} else {
+			cellChar = CharSpace
+		}
+
+		// Check for merge/fork connections
+		for _, mergeLane := range node.MergeFrom {
+			if mergeLane == lane {
+				if mergeLane > node.Lane {
+					cellChar = CharCornerBR
+				} else {
+					cellChar = CharCornerBL
+				}
+				hasContent = true
+			}
+		}
+		for _, forkLane := range node.ForkTo {
+			if forkLane == lane {
+				if forkLane > node.Lane {
+					cellChar = CharCornerTR
+				} else {
+					cellChar = CharCornerTL
+				}
+				hasContent = true
+			}
+		}
+
+		// Write the cell (all dimmed)
+		if hasContent {
+			result.WriteString(DimmedGraphStyle.Render(string(cellChar)))
+		} else {
+			result.WriteRune(cellChar)
+		}
+
+		// Write separator
+		if lane < r.layout.MaxLanes-1 {
+			connector := r.getConnectorDimmed(row, lane, node)
+			result.WriteString(connector)
+		}
+	}
+
+	result.WriteRune(' ')
+	return result.String()
+}
+
+// getConnectorDimmed returns a dimmed connector character
+func (r *RowRenderer) getConnectorDimmed(row, lane int, node *CommitNode) string {
+	needsConnection := false
+
+	for _, mergeLane := range node.MergeFrom {
+		if (mergeLane > node.Lane && lane >= node.Lane && lane < mergeLane) ||
+			(mergeLane < node.Lane && lane >= mergeLane && lane < node.Lane) {
+			needsConnection = true
+			break
+		}
+	}
+
+	if !needsConnection {
+		for _, forkLane := range node.ForkTo {
+			if (forkLane > node.Lane && lane >= node.Lane && lane < forkLane) ||
+				(forkLane < node.Lane && lane >= forkLane && lane < node.Lane) {
+				needsConnection = true
+				break
+			}
+		}
+	}
+
+	if needsConnection {
+		return DimmedGraphStyle.Render(string(CharHorizontal))
+	}
+	return " "
+}
+
 // displayWidth calculates the display width in runes, excluding ANSI codes
 func (r *RowRenderer) displayWidth(s string) int {
 	width := 0

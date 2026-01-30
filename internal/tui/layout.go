@@ -107,13 +107,18 @@ func (m Model) renderFooter() string {
 		filterParts = append(filterParts, fmt.Sprintf("author:%d/%d", authorFiltered, authorTotal))
 	}
 
+	// Author highlight status
+	if m.AuthorHighlightActive() {
+		filterParts = append(filterParts, fmt.Sprintf("highlight:%s", m.HighlightedAuthorName()))
+	}
+
 	filterStats := ""
 	if len(filterParts) > 0 {
 		filterStats = "  " + strings.Join(filterParts, " ")
 	}
 
 	// Condensed keybindings
-	keys := "[a]uthor [b]ranch [c]lear [q]"
+	keys := "[a]uthor [A]highlight [b]ranch [c]lear [q]"
 
 	// Build footer with spacing
 	left := fmt.Sprintf("%s %s%s", watchStatus, commitStats, filterStats)

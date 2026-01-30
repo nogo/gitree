@@ -14,35 +14,38 @@ import (
 )
 
 type Model struct {
-	repo             *domain.Repository
-	repoPath         string
-	list             list.Model
-	detail           detail.Model
-	branchFilter     filter.BranchFilter
-	authorFilter     filter.AuthorFilter
-	watcher          *watcher.Watcher
-	watching         bool
-	showDetail       bool
-	showBranchFilter bool
-	showAuthorFilter bool
+	repo               *domain.Repository
+	repoPath           string
+	list               list.Model
+	detail             detail.Model
+	branchFilter       filter.BranchFilter
+	authorFilter       filter.AuthorFilter
+	authorHighlight    filter.AuthorHighlight
+	watcher            *watcher.Watcher
+	watching           bool
+	showDetail         bool
+	showBranchFilter   bool
+	showAuthorFilter   bool
+	showAuthorHighlight bool
 	branchFilterActive bool
 	authorFilterActive bool
-	width            int
-	height           int
-	ready            bool
-	err              error
+	width              int
+	height             int
+	ready              bool
+	err                error
 }
 
 func NewModel(repo *domain.Repository, repoPath string, w *watcher.Watcher) Model {
 	return Model{
-		repo:         repo,
-		repoPath:     repoPath,
-		list:         list.New(repo),
-		detail:       detail.New(),
-		branchFilter: filter.NewBranchFilter(repo.Branches),
-		authorFilter: filter.NewAuthorFilter(repo.Commits),
-		watcher:      w,
-		watching:     w != nil,
+		repo:            repo,
+		repoPath:        repoPath,
+		list:            list.New(repo),
+		detail:          detail.New(),
+		branchFilter:    filter.NewBranchFilter(repo.Branches),
+		authorFilter:    filter.NewAuthorFilter(repo.Commits),
+		authorHighlight: filter.NewAuthorHighlight(repo.Commits),
+		watcher:         w,
+		watching:        w != nil,
 	}
 }
 
@@ -105,6 +108,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Handle author highlight overlay
+	if m.showAuthorHighlight {
+		if keyMsg, ok := msg.(tea.KeyMsg); ok {
+			var done, cancelled bool
+			m.authorHighlight, _, done, cancelled = m.authorHighlight.Update(keyMsg)
+			if done {
+				m.applyHighlight()
+				m.showAuthorHighlight = false
+			}
+			if cancelled {
+				m.showAuthorHighlight = false
+			}
+			return m, nil
+		}
+		return m, nil
+	}
+
 	switch msg := msg.(type) {
 	case RepoChangedMsg:
 		// Repo changed, trigger reload and re-arm watcher
@@ -118,11 +138,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.repo = msg.Repo
 			m.branchFilter.UpdateBranches(msg.Repo.Branches)
 			m.authorFilter.UpdateAuthors(msg.Repo.Commits)
+			m.authorHighlight.UpdateAuthors(msg.Repo.Commits)
 			// Reapply filter if active
 			if m.branchFilterActive || m.authorFilterActive {
 				m.applyFilter()
 			} else {
 				m.list.SetRepo(msg.Repo)
+			}
+			// Reapply highlight if active
+			if m.authorHighlight.IsActive() {
+				m.applyHighlight()
 			}
 		}
 		return m, nil
@@ -162,12 +187,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.showAuthorFilter = true
 			return m, nil
 
+		case "A":
+			m.authorHighlight.SetSize(m.width, m.height)
+			m.showAuthorHighlight = true
+			return m, nil
+
 		case "c":
-			// Clear all filters
+			// Clear all filters and highlight
 			m.branchFilter.Reset()
 			m.authorFilter.Reset()
+			m.authorHighlight.Reset()
 			m.branchFilterActive = false
 			m.authorFilterActive = false
+			m.list.SetHighlightedEmails(nil)
 			m.list.SetRepo(m.repo)
 			return m, nil
 
@@ -189,6 +221,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.detail.SetSize(msg.Width, msg.Height)
 		m.branchFilter.SetSize(msg.Width, msg.Height)
 		m.authorFilter.SetSize(msg.Width, msg.Height)
+		m.authorHighlight.SetSize(msg.Width, msg.Height)
 	}
 
 	// Route updates to list
@@ -226,6 +259,11 @@ func (m *Model) applyFilter() {
 	}
 
 	m.list.SetFilteredCommits(filtered, m.repo)
+}
+
+func (m *Model) applyHighlight() {
+	emails := m.authorHighlight.HighlightedEmails()
+	m.list.SetHighlightedEmails(emails)
 }
 
 func (m Model) filterCommitsByBranch(commits []domain.Commit, branchNames []string) []domain.Commit {
@@ -318,6 +356,9 @@ func (m Model) View() string {
 	if m.showAuthorFilter {
 		return m.authorFilter.View()
 	}
+	if m.showAuthorHighlight {
+		return m.authorHighlight.View()
+	}
 	if m.showDetail {
 		return m.renderWithDetail()
 	}
@@ -376,4 +417,14 @@ func (m Model) FilteredAuthorCount() int {
 // TotalAuthorCount returns the total number of authors
 func (m Model) TotalAuthorCount() int {
 	return m.authorFilter.TotalCount()
+}
+
+// AuthorHighlightActive returns whether an author is currently highlighted
+func (m Model) AuthorHighlightActive() bool {
+	return m.authorHighlight.IsActive()
+}
+
+// HighlightedAuthorName returns the name of the highlighted author
+func (m Model) HighlightedAuthorName() string {
+	return m.authorHighlight.HighlightedName()
 }
