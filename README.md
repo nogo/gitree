@@ -4,6 +4,22 @@ A terminal-based git history visualization tool with live updates and time-based
 
 ![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go&logoColor=white)
 
+## Why gitree?
+
+Tools like [tig](https://github.com/jonas/tig) and [lazygit](https://github.com/jesseduffield/lazygit) are excellent for *performing* git operations. gitree takes a different approach:
+
+| | gitree | tig / lazygit |
+|---|--------|---------------|
+| **Focus** | Visualization | Actions |
+| **Philosophy** | Read-only explorer | Full git workflow |
+| **Time navigation** | Date histogram with range filtering | Scroll only |
+| **Live updates** | Auto-refresh on file changes | Manual refresh |
+| **Graph density** | Dynamic width based on viewport | Fixed width |
+
+gitree is for **understanding history**, not managing it. When you need to explore a complex branch structure, find when a change was introduced, or visualize commit patterns over time — without accidentally modifying anything.
+
+Use gitree alongside your existing workflow, not as a replacement.
+
 ## Features
 
 - **Visual commit graph** - Multi-lane DAG visualization showing branch relationships
@@ -79,20 +95,21 @@ gitree --check-update          # Check for new releases
 | `b` | Branch filter |
 | `a` | Author filter |
 | `A` | Author highlight (dims others) |
-| `T` | Tag filter |
+| `t` | Tag filter |
 | `/` | Search commits |
 | `n` / `N` | Next/previous match |
 | `c` | Clear all filters |
-| `?` | Show help |
+| `h` | Show help |
 
 ### Timeline
 
 | Key | Action |
 |-----|--------|
-| `t` | Toggle histogram |
+| `r` | Toggle histogram |
 | `Tab` | Focus histogram |
-| `h` / `l` | Move selection |
+| `h` / `l` | Move selection (when focused) |
 | `[` / `]` | Set range start/end |
+| `+` / `-` | Zoom in/out |
 | `Enter` | Apply time filter |
 
 ### When Expanded
