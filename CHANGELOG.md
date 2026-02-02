@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.4.0] - 2026-02-02
+
+### Added
+- **Tag visualization** - Tags displayed as yellow `<tag>` badges on commits
+- **Tag filter** - Filter by tag with `T` key, shows tag commits + ancestors
+- **Help overlay** - Press `?` to see all keybindings
+- **Version info** - `--version` flag shows version and git commit
+- **Update checker** - `--check-update` flag checks GitHub for new releases
+- **CLI filter flags** - `-b`/`--branch` and `-a`/`--author` for initial filters
+- **Year in dates** - Date column now shows year for older commits
+
+### Changed
+- **556x faster loading** - Fixed O(refs×commits) bug, 34k commits now load in 1.5s instead of 13 minutes
+- **Virtual scrolling** - Only visible rows rendered, navigation is instant regardless of repo size
+- **Dynamic graph width** - Graph column adjusts based on visible commits
+- **Refactored rendering** - New `text/` package, `RowLayout` struct, cleaner architecture
+
+### Fixed
+- Graph color leak between commits
+- Incomplete branch rendering on complex histories
+- Rendering artifacts when scrolling quickly
+- Filter overlays now scroll for large lists
+
 ## [0.3.0] - 2026-01-30
 
 ### Added

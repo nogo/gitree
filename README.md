@@ -9,12 +9,14 @@ A terminal-based git history visualization tool with live updates and time-based
 - **Visual commit graph** - Multi-lane DAG visualization showing branch relationships
 - **Live updates** - Graph refreshes automatically when repository changes
 - **Inline commit details** - Expand commits to see files and diffs without leaving the graph
-- **Filtering** - Filter by branch or author
+- **Tag visualization** - Tags displayed as yellow badges on commits
+- **Filtering** - Filter by branch, author, or tag
 - **Author highlight** - Dim other commits to focus on one contributor
 - **Search** - Find commits by message or hash
 - **Date histogram** - Timeline showing commit density, filter by time range
 - **Diff view** - View file changes with syntax highlighting
 - **Vim-style navigation** - Keyboard-driven with mouse support
+- **Update checker** - Check for new releases via `--check-update`
 
 ## Layout
 
@@ -47,6 +49,14 @@ gitree
 # Open specific repository
 gitree /path/to/repo
 gitree ~/projects/myrepo
+
+# With initial filters
+gitree -b main                 # Start with branch filter
+gitree -a "Alice"              # Start with author filter
+
+# Version and updates
+gitree --version               # Show version info
+gitree --check-update          # Check for new releases
 ```
 
 ## Key Bindings
@@ -69,9 +79,11 @@ gitree ~/projects/myrepo
 | `b` | Branch filter |
 | `a` | Author filter |
 | `A` | Author highlight (dims others) |
+| `T` | Tag filter |
 | `/` | Search commits |
 | `n` / `N` | Next/previous match |
 | `c` | Clear all filters |
+| `?` | Show help |
 
 ### Timeline
 
@@ -107,7 +119,7 @@ Download the latest release from the [releases page](https://github.com/nogo/git
 
 ```bash
 # Example for macOS Apple Silicon
-tar -xzf gitree_0.3.0_darwin_arm64.tar.gz
+tar -xzf gitree_0.4.0_darwin_arm64.tar.gz
 sudo mv gitree /usr/local/bin/
 ```
 
