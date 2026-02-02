@@ -173,7 +173,7 @@ func (m Model) renderFooter() string {
 	} else if m.SearchActive() && m.SearchMatchCount() > 0 {
 		keys = "[n]ext [N]prev [t]ime [c]lear [q]"
 	} else {
-		keys = "[/]search [a]uthor [b]ranch [T]ag [t]ime [c]lear [q]"
+		keys = "[h]elp [/]search [a]uthor [b]ranch [t]ag [r]ange [c]lear [q]"
 	}
 
 	// Build footer with spacing

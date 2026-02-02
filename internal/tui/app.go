@@ -28,6 +28,7 @@ type Model struct {
 	showAuthorFilter    bool
 	showAuthorHighlight bool
 	showTagFilter       bool
+	showHelp            bool
 	width               int
 	height              int
 	ready               bool
@@ -114,6 +115,18 @@ func (m Model) loadExpandedFiles() tea.Cmd {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Handle help overlay
+	if m.showHelp {
+		if keyMsg, ok := msg.(tea.KeyMsg); ok {
+			switch keyMsg.String() {
+			case "esc", "h", "q", "enter", " ":
+				m.showHelp = false
+			}
+			return m, nil
+		}
+		return m, nil
+	}
+
 	// Handle branch filter overlay first
 	if m.showBranchFilter {
 		if keyMsg, ok := msg.(tea.KeyMsg); ok {
@@ -354,9 +367,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.showAuthorHighlight = true
 			return m, nil
 
-		case "T":
+		case "t":
 			m.filters.TagFilter().SetSize(m.width, m.height)
 			m.showTagFilter = true
+			return m, nil
+
+		case "h":
+			m.showHelp = true
 			return m, nil
 
 		case "/":
@@ -379,8 +396,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
-		case "t":
-			// Toggle histogram visibility
+		case "r":
+			// Toggle range/histogram visibility
 			m.histogram.Toggle()
 			m.recalculateListHeight()
 			return m, nil
@@ -493,6 +510,9 @@ func (m Model) View() string {
 	}
 	if m.showTagFilter {
 		return m.filters.TagFilter().View()
+	}
+	if m.showHelp {
+		return m.renderHelp()
 	}
 	if m.showDiff {
 		return m.renderWithDiff()
@@ -654,4 +674,52 @@ func (m Model) HistogramView() string {
 // HistogramHeight returns the histogram height
 func (m Model) HistogramHeight() int {
 	return m.histogram.Height()
+}
+
+// renderHelp renders the help overlay
+func (m Model) renderHelp() string {
+	help := `Keyboard Shortcuts
+
+ Navigation
+   j/↓  k/↑       Move cursor
+   Ctrl+d/u      Page down/up
+   g/G           Jump to first/last
+   Enter         Expand commit
+
+ Filters
+   a             Author filter
+   b             Branch filter
+   t             Tag filter
+   A             Author highlight
+   r             Range (histogram)
+   c             Clear all filters
+
+ Search
+   /             Start search
+   n/N           Next/prev match
+
+ Histogram (when focused)
+   h/l ←/→       Move selection
+   Space         Toggle selection
+   [/]           Set start/end
+   +/-           Zoom in/out
+   Enter         Apply filter
+   Tab           Return to list
+
+ General
+   h             This help
+   q             Quit
+
+Press any key to close`
+
+	style := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("62")).
+		Padding(1, 2)
+
+	return lipgloss.Place(
+		m.width, m.height,
+		lipgloss.Center, lipgloss.Center,
+		style.Render(help),
+	)
 }
