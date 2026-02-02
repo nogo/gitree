@@ -159,7 +159,8 @@ go install github.com/nogo/gitree/cmd/gitree@latest
 ```bash
 git clone https://github.com/nogo/gitree.git
 cd gitree
-go build -o gitree ./cmd/gitree
+make build
+# Binary is in bin/gitree
 ```
 
 ## Requirements
