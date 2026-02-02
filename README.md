@@ -2,7 +2,7 @@
 
 A terminal-based git history visualization tool with live updates and time-based navigation.
 
-![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go&logoColor=white)
+![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go&logoColor=white)
 
 ## Why gitree?
 
@@ -67,8 +67,10 @@ gitree /path/to/repo
 gitree ~/projects/myrepo
 
 # With initial filters
-gitree -b main                 # Start with branch filter
-gitree -a "Alice"              # Start with author filter
+gitree -b main                 # Filter by branch
+gitree -a "Alice"              # Filter by author
+gitree -t v1.0.0               # Filter by tag
+gitree -b main -a "Alice"      # Combine filters
 
 # Version and updates
 gitree --version               # Show version info
@@ -162,7 +164,7 @@ go build -o gitree ./cmd/gitree
 
 ## Requirements
 
-- Go 1.24 or later
+- Go 1.25 or later
 - A terminal with 256-color support
 
 ## Dependencies

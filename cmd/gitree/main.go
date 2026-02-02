@@ -30,6 +30,9 @@ func main() {
 	// Short flags
 	flag.BoolVar(showVersion, "v", false, "Show version information")
 	flag.BoolVar(showHelp, "h", false, "Show help message")
+	flag.StringVar(filterBranch, "b", "", "Filter by branch name")
+	flag.StringVar(filterAuthor, "a", "", "Filter by author name")
+	flag.StringVar(filterTag, "t", "", "Filter by tag name")
 
 	flag.Usage = printUsage
 	flag.Parse()
@@ -170,12 +173,12 @@ func printUsage() {
 	fmt.Println("  gitree [flags] [path]")
 	fmt.Println()
 	fmt.Println("Flags:")
-	fmt.Println("  --branch <name>    Filter by branch name")
-	fmt.Println("  --author <name>    Filter by author name")
-	fmt.Println("  --tag <name>       Filter by tag name")
-	fmt.Println("  --version, -v      Show version information")
-	fmt.Println("  --check-update     Check for new releases")
-	fmt.Println("  --help, -h         Show this help message")
+	fmt.Println("  -b, --branch <name>   Filter by branch name")
+	fmt.Println("  -a, --author <name>   Filter by author name")
+	fmt.Println("  -t, --tag <name>      Filter by tag name")
+	fmt.Println("  -v, --version         Show version information")
+	fmt.Println("  --check-update        Check for new releases")
+	fmt.Println("  -h, --help            Show this help message")
 	fmt.Println()
 	fmt.Println("Examples:")
 	fmt.Println("  gitree                      Open current directory")
