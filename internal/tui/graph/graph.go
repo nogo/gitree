@@ -165,6 +165,22 @@ func (r *Renderer) badgeStyleForGroup(baseName string, hasLocal, hasRemote bool)
 	return OriginBadgeStyle
 }
 
+// RenderTagBadges returns styled tag labels for commit
+// Format: <tagname> with yellow/gold background
+func (r *Renderer) RenderTagBadges(c domain.Commit) string {
+	if len(c.Tags) == 0 {
+		return ""
+	}
+
+	var badges []string
+	for _, tag := range c.Tags {
+		label := "<" + tag + ">"
+		badges = append(badges, TagBadgeStyle.Render(label))
+	}
+
+	return strings.Join(badges, " ") + " "
+}
+
 // RenderContinuation returns continuation lines for expanded row areas
 func (r *Renderer) RenderContinuation(i int) string {
 	if i < 0 || i >= len(r.commits) {

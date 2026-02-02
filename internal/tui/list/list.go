@@ -508,8 +508,8 @@ func (m Model) buildRowWithLayout(i int, c domain.Commit, isMatch bool, layout R
 		graphCell = m.graph.RenderGraphCellDimmed(i)
 	}
 
-	// Message with badges
-	badges := m.graph.RenderBranchBadges(c)
+	// Message with badges (branches first, then tags)
+	badges := m.graph.RenderBranchBadges(c) + m.graph.RenderTagBadges(c)
 	badgeLen := text.Width(badges)
 	msgAvail := layout.Message - badgeLen
 	if msgAvail < 5 {

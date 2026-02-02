@@ -26,8 +26,8 @@
 | 20 | Git layer tests | `done` | 18 |
 | 21 | Performance benchmarks | `done` | 18 |
 | 22 | Performance fixes | `done` | 21 (REQUIRED) |
-| 22a | UI/rendering fixes | `in_progress` | 22 |
-| 23 | Tag visualization | `pending` | - |
+| 22a | UI/rendering fixes | `done` | 22 |
+| 23 | Tag visualization | `done` | - |
 | 24 | Tag filter | `pending` | 23 |
 | 25 | Release check | `pending` | - |
 
@@ -87,6 +87,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 | 2026-01-30 | 22 | Fixed: Now loads HEAD + local branches (was HEAD only, missed other branches) |
 | 2026-01-30 | 22 | Refactored rendering: text/ package, RowLayout, Row struct, dynamic graph width |
 | 2026-01-30 | 22a | Started: cursor bug when scrolling up at end of history |
+| 2026-02-02 | 23 | Added tag visualization: <tagname> badges with yellow styling |
 
 ---
 

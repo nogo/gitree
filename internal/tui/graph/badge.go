@@ -19,6 +19,10 @@ var (
 			Background(lipgloss.Color("161")).
 			Foreground(lipgloss.Color("255")).
 			Bold(true)
+
+	TagBadgeStyle = lipgloss.NewStyle().
+			Background(lipgloss.Color("220")).
+			Foreground(lipgloss.Color("0"))
 )
 
 func (r *Renderer) badgeStyle(ref string) lipgloss.Style {

@@ -12,6 +12,7 @@ type Commit struct {
 	FullMessage string
 	Parents     []string // parent hashes
 	BranchRefs  []string // branches pointing here
+	Tags        []string // tags pointing here
 }
 
 type Branch struct {

@@ -77,6 +77,9 @@ func (r *Reader) loadCommitsFromRepo(repo *git.Repository, limit int) ([]domain.
 		return nil
 	})
 
+	// Build map of tags pointing to each commit
+	tagRefs := loadTagRefs(repo)
+
 	// Load ALL commits from ALL refs in a single traversal - O(commits)
 	// Using All: true is efficient regardless of ref count
 	logOpts := &git.LogOptions{
@@ -110,6 +113,7 @@ func (r *Reader) loadCommitsFromRepo(repo *git.Repository, limit int) ([]domain.
 			FullMessage: c.Message,
 			Parents:     parents,
 			BranchRefs:  branchRefs[hash],
+			Tags:        tagRefs[hash],
 		})
 		return nil
 	})
@@ -281,6 +285,39 @@ func firstLine(s string) string {
 		return s[:idx]
 	}
 	return s
+}
+
+// loadTagRefs returns a map of commit hash to tag names.
+// Handles both lightweight tags (point directly to commit) and
+// annotated tags (point to tag object that references commit).
+func loadTagRefs(repo *git.Repository) map[string][]string {
+	tagRefs := make(map[string][]string)
+
+	tags, err := repo.Tags()
+	if err != nil {
+		return tagRefs
+	}
+
+	tags.ForEach(func(ref *plumbing.Reference) error {
+		tagName := ref.Name().Short()
+		hash := ref.Hash()
+
+		// Try to resolve as annotated tag first
+		tagObj, err := repo.TagObject(hash)
+		if err == nil {
+			// Annotated tag - get the commit it points to
+			commitHash, err := tagObj.Commit()
+			if err == nil {
+				tagRefs[commitHash.Hash.String()] = append(tagRefs[commitHash.Hash.String()], tagName)
+			}
+		} else {
+			// Lightweight tag - hash is the commit directly
+			tagRefs[hash.String()] = append(tagRefs[hash.String()], tagName)
+		}
+		return nil
+	})
+
+	return tagRefs
 }
 
 // getCommitChanges returns changes between commit and its first parent.
