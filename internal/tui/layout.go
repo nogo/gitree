@@ -17,18 +17,6 @@ func (m Model) renderLayout() string {
 	histogram := m.renderHistogram()
 	footer := m.renderFooter()
 
-	// Header(1) + separator(1) + column headers(1) + separator(1) + footer(1) = 5 lines
-	// Plus histogram height if visible
-	histHeight := m.HistogramHeight()
-	contentHeight := m.height - 5 - histHeight
-	if contentHeight < 0 {
-		contentHeight = 0
-	}
-
-	content = lipgloss.NewStyle().
-		Height(contentHeight).
-		Render(content)
-
 	if histogram != "" {
 		return lipgloss.JoinVertical(
 			lipgloss.Left,

@@ -136,7 +136,6 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m.cursorTo(len(m.commits) - 1)
 		}
 		m.syncViewport()
-		// Don't pass navigation keys to viewport - we handle scrolling ourselves
 		return m, nil
 
 	case tea.MouseMsg:
@@ -180,7 +179,17 @@ func (m Model) renderVisibleRows() string {
 		return ""
 	}
 
-	endRow := m.viewOffset + m.height
+	// Calculate how many commit rows we can show
+	availableRows := m.height
+	if m.expanded {
+		// Reserve space for expanded content
+		availableRows -= expandedHeight
+		if availableRows < 1 {
+			availableRows = 1
+		}
+	}
+
+	endRow := m.viewOffset + availableRows
 	if endRow > len(m.commits) {
 		endRow = len(m.commits)
 	}
@@ -202,9 +211,11 @@ func (m Model) renderVisibleRows() string {
 		}
 	}
 
-	// Pad to fill viewport height
+	// Pad to fill viewport height with full-width empty rows
+	// (ensures old content is cleared in terminals that don't auto-clear)
+	emptyRow := strings.Repeat(" ", m.width)
 	for len(rows) < m.height {
-		rows = append(rows, "")
+		rows = append(rows, emptyRow)
 	}
 
 	return strings.Join(rows, "\n")

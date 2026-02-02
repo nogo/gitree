@@ -63,8 +63,10 @@ func (r Row) Render(layout RowLayout, style RowStyle) string {
 
 	row := b.String()
 
+	// Always pad to full width to ensure old content is cleared
+	// (fixes rendering issues in terminals like Zed that don't auto-clear lines)
 	if style.Selected {
 		return SelectedRowStyle.Width(style.Width).Render(row)
 	}
-	return row
+	return text.FitAnsi(row, style.Width)
 }
