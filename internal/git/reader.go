@@ -283,6 +283,37 @@ func firstLine(s string) string {
 	return s
 }
 
+// getCommitChanges returns changes between commit and its first parent.
+// For initial commits, compares against empty tree.
+func getCommitChanges(repo *git.Repository, commitHash string) (object.Changes, error) {
+	hash := plumbing.NewHash(commitHash)
+	commit, err := repo.CommitObject(hash)
+	if err != nil {
+		return nil, err
+	}
+
+	commitTree, err := commit.Tree()
+	if err != nil {
+		return nil, err
+	}
+
+	if commit.NumParents() == 0 {
+		return object.DiffTree(nil, commitTree)
+	}
+
+	parent, err := commit.Parent(0)
+	if err != nil {
+		return nil, err
+	}
+
+	parentTree, err := parent.Tree()
+	if err != nil {
+		return nil, err
+	}
+
+	return object.DiffTree(parentTree, commitTree)
+}
+
 // LoadFileDiff returns the diff for a specific file in a commit
 func (r *Reader) LoadFileDiff(path string, commitHash string, filePath string) (string, bool, error) {
 	repo, err := git.PlainOpen(path)
@@ -290,37 +321,9 @@ func (r *Reader) LoadFileDiff(path string, commitHash string, filePath string) (
 		return "", false, err
 	}
 
-	hash := plumbing.NewHash(commitHash)
-	commit, err := repo.CommitObject(hash)
+	changes, err := getCommitChanges(repo, commitHash)
 	if err != nil {
 		return "", false, err
-	}
-
-	commitTree, err := commit.Tree()
-	if err != nil {
-		return "", false, err
-	}
-
-	var changes object.Changes
-	if commit.NumParents() == 0 {
-		// Initial commit: compare with empty tree
-		changes, err = object.DiffTree(nil, commitTree)
-		if err != nil {
-			return "", false, err
-		}
-	} else {
-		parent, err := commit.Parent(0)
-		if err != nil {
-			return "", false, err
-		}
-		parentTree, err := parent.Tree()
-		if err != nil {
-			return "", false, err
-		}
-		changes, err = object.DiffTree(parentTree, commitTree)
-		if err != nil {
-			return "", false, err
-		}
 	}
 
 	// Find the change for the requested file
@@ -358,37 +361,9 @@ func (r *Reader) LoadFileChanges(path string, commitHash string) ([]domain.FileC
 		return nil, err
 	}
 
-	hash := plumbing.NewHash(commitHash)
-	commit, err := repo.CommitObject(hash)
+	changes, err := getCommitChanges(repo, commitHash)
 	if err != nil {
 		return nil, err
-	}
-
-	commitTree, err := commit.Tree()
-	if err != nil {
-		return nil, err
-	}
-
-	var changes object.Changes
-	if commit.NumParents() == 0 {
-		// Initial commit: compare with empty tree
-		changes, err = object.DiffTree(nil, commitTree)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		parent, err := commit.Parent(0)
-		if err != nil {
-			return nil, err
-		}
-		parentTree, err := parent.Tree()
-		if err != nil {
-			return nil, err
-		}
-		changes, err = object.DiffTree(parentTree, commitTree)
-		if err != nil {
-			return nil, err
-		}
 	}
 
 	var result []domain.FileChange
