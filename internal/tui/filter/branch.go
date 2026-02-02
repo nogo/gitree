@@ -10,11 +10,12 @@ import (
 )
 
 type BranchFilter struct {
-	branches []domain.Branch
-	selected map[string]bool // branch name → visible
-	cursor   int
-	width    int
-	height   int
+	branches     []domain.Branch
+	selected     map[string]bool // branch name → visible
+	cursor       int
+	scrollOffset int
+	width        int
+	height       int
 }
 
 func NewBranchFilter(branches []domain.Branch) BranchFilter {
@@ -33,6 +34,34 @@ func (f *BranchFilter) SetSize(w, h int) {
 	f.height = h
 }
 
+// maxVisibleItems calculates how many items can be displayed
+func (f BranchFilter) maxVisibleItems() int {
+	// Height overhead: title(1) + hint(1) + empty(1) + empty(1) + footer(1) = 5
+	// Plus border(2) + padding(2) = 4
+	// Plus scroll indicators (2 max)
+	// Total overhead = 11
+	maxItems := f.height - 11
+	if maxItems < 3 {
+		maxItems = 3
+	}
+	return maxItems
+}
+
+// adjustScroll keeps cursor within visible range
+func (f *BranchFilter) adjustScroll() {
+	maxVisible := f.maxVisibleItems()
+	if len(f.branches) <= maxVisible {
+		f.scrollOffset = 0
+		return
+	}
+	if f.cursor < f.scrollOffset {
+		f.scrollOffset = f.cursor
+	}
+	if f.cursor >= f.scrollOffset+maxVisible {
+		f.scrollOffset = f.cursor - maxVisible + 1
+	}
+}
+
 // Update handles input and returns (updated filter, cmd, done, cancelled)
 func (f BranchFilter) Update(msg tea.Msg) (BranchFilter, tea.Cmd, bool, bool) {
 	switch msg := msg.(type) {
@@ -41,10 +70,12 @@ func (f BranchFilter) Update(msg tea.Msg) (BranchFilter, tea.Cmd, bool, bool) {
 		case "j", "down":
 			if f.cursor < len(f.branches)-1 {
 				f.cursor++
+				f.adjustScroll()
 			}
 		case "k", "up":
 			if f.cursor > 0 {
 				f.cursor--
+				f.adjustScroll()
 			}
 		case " ", "space":
 			// Toggle current branch
@@ -77,7 +108,22 @@ func (f BranchFilter) View() string {
 	lines = append(lines, HintStyle.Render("space=toggle  a=all  n=none"))
 	lines = append(lines, "")
 
-	for i, b := range f.branches {
+	maxVisible := f.maxVisibleItems()
+	totalItems := len(f.branches)
+
+	// Show "more above" indicator
+	if f.scrollOffset > 0 {
+		lines = append(lines, HintStyle.Render(fmt.Sprintf("  ↑ %d more", f.scrollOffset)))
+	}
+
+	// Calculate visible range
+	endIdx := f.scrollOffset + maxVisible
+	if endIdx > totalItems {
+		endIdx = totalItems
+	}
+
+	for i := f.scrollOffset; i < endIdx; i++ {
+		b := f.branches[i]
 		checkbox := UncheckedStyle.Render("[ ]")
 		if f.selected[b.Name] {
 			checkbox = CheckedStyle.Render("[x]")
@@ -94,6 +140,11 @@ func (f BranchFilter) View() string {
 			line = SelectedStyle.Render(line)
 		}
 		lines = append(lines, line)
+	}
+
+	// Show "more below" indicator
+	if endIdx < totalItems {
+		lines = append(lines, HintStyle.Render(fmt.Sprintf("  ↓ %d more", totalItems-endIdx)))
 	}
 
 	lines = append(lines, "")

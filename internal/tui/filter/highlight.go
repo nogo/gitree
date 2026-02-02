@@ -11,10 +11,12 @@ import (
 
 // AuthorHighlight provides single-select author highlighting
 type AuthorHighlight struct {
-	authors       []AuthorEntry
-	cursor        int
-	selectedName  string // empty = no highlight (None option)
-	width, height int
+	authors      []AuthorEntry
+	cursor       int
+	scrollOffset int
+	selectedName string // empty = no highlight (None option)
+	width        int
+	height       int
 }
 
 // NewAuthorHighlight creates a highlight selector from commits
@@ -67,6 +69,40 @@ func (h *AuthorHighlight) SetSize(w, height int) {
 	h.height = height
 }
 
+// totalItems returns total item count including the "None" option
+func (h AuthorHighlight) totalItems() int {
+	return len(h.authors) + 1 // +1 for "None" option
+}
+
+// maxVisibleItems calculates how many items can be displayed
+func (h AuthorHighlight) maxVisibleItems() int {
+	// Height overhead: title(1) + hint(1) + empty(1) + empty(1) + footer(1) = 5
+	// Plus border(2) + padding(2) = 4
+	// Plus scroll indicators (2 max)
+	// Total overhead = 11
+	maxItems := h.height - 11
+	if maxItems < 3 {
+		maxItems = 3
+	}
+	return maxItems
+}
+
+// adjustScroll keeps cursor within visible range
+func (h *AuthorHighlight) adjustScroll() {
+	maxVisible := h.maxVisibleItems()
+	total := h.totalItems()
+	if total <= maxVisible {
+		h.scrollOffset = 0
+		return
+	}
+	if h.cursor < h.scrollOffset {
+		h.scrollOffset = h.cursor
+	}
+	if h.cursor >= h.scrollOffset+maxVisible {
+		h.scrollOffset = h.cursor - maxVisible + 1
+	}
+}
+
 // Update handles input and returns (updated, cmd, done, cancelled)
 func (h AuthorHighlight) Update(msg tea.Msg) (AuthorHighlight, tea.Cmd, bool, bool) {
 	switch msg := msg.(type) {
@@ -76,10 +112,12 @@ func (h AuthorHighlight) Update(msg tea.Msg) (AuthorHighlight, tea.Cmd, bool, bo
 			// cursor 0 = None, 1..N = authors
 			if h.cursor < len(h.authors) {
 				h.cursor++
+				h.adjustScroll()
 			}
 		case "k", "up":
 			if h.cursor > 0 {
 				h.cursor--
+				h.adjustScroll()
 			}
 		case "enter", " ", "space":
 			// Select current option
@@ -102,34 +140,57 @@ func (h AuthorHighlight) View() string {
 	lines = append(lines, HintStyle.Render("j/k=move  Enter=select"))
 	lines = append(lines, "")
 
-	// "None" option (index 0)
-	radio := RadioOffStyle.Render("( )")
-	if h.selectedName == "" {
-		radio = RadioOnStyle.Render("(•)")
+	maxVisible := h.maxVisibleItems()
+	total := h.totalItems()
+
+	// Show "more above" indicator
+	if h.scrollOffset > 0 {
+		lines = append(lines, HintStyle.Render(fmt.Sprintf("  ↑ %d more", h.scrollOffset)))
 	}
-	line := fmt.Sprintf("  %s None (show all normally)", radio)
-	if h.cursor == 0 {
-		line = fmt.Sprintf("> %s None (show all normally)", radio)
-		line = SelectedStyle.Render(line)
+
+	// Calculate visible range
+	endIdx := h.scrollOffset + maxVisible
+	if endIdx > total {
+		endIdx = total
 	}
-	lines = append(lines, line)
 
-	// Author options (index 1..N)
-	for i, a := range h.authors {
-		radio := RadioOffStyle.Render("( )")
-		if h.selectedName == a.Name {
-			radio = RadioOnStyle.Render("(•)")
+	// Render visible items (index 0 = None, index 1..N = authors)
+	for i := h.scrollOffset; i < endIdx; i++ {
+		if i == 0 {
+			// "None" option
+			radio := RadioOffStyle.Render("( )")
+			if h.selectedName == "" {
+				radio = RadioOnStyle.Render("(•)")
+			}
+			line := fmt.Sprintf("  %s None (show all normally)", radio)
+			if h.cursor == 0 {
+				line = fmt.Sprintf("> %s None (show all normally)", radio)
+				line = SelectedStyle.Render(line)
+			}
+			lines = append(lines, line)
+		} else {
+			// Author option (index i corresponds to authors[i-1])
+			a := h.authors[i-1]
+			radio := RadioOffStyle.Render("( )")
+			if h.selectedName == a.Name {
+				radio = RadioOnStyle.Render("(•)")
+			}
+
+			displayName := strings.Title(a.Name)
+			label := fmt.Sprintf("%s (%d)", displayName, a.Count)
+
+			line := fmt.Sprintf("  %s %s", radio, label)
+			if h.cursor == i {
+				line = fmt.Sprintf("> %s %s", radio, label)
+				line = SelectedStyle.Render(line)
+			}
+			lines = append(lines, line)
 		}
+	}
 
-		displayName := strings.Title(a.Name)
-		label := fmt.Sprintf("%s (%d)", displayName, a.Count)
-
-		line := fmt.Sprintf("  %s %s", radio, label)
-		if h.cursor == i+1 {
-			line = fmt.Sprintf("> %s %s", radio, label)
-			line = SelectedStyle.Render(line)
-		}
-		lines = append(lines, line)
+	// Show "more below" indicator
+	if endIdx < total {
+		lines = append(lines, HintStyle.Render(fmt.Sprintf("  ↓ %d more", total-endIdx)))
 	}
 
 	lines = append(lines, "")
