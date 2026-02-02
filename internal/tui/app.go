@@ -676,6 +676,37 @@ func (m Model) HistogramHeight() int {
 	return m.histogram.Height()
 }
 
+// ApplyInitialFilters applies filters from CLI arguments
+func (m *Model) ApplyInitialFilters(branch, author, tag string) {
+	needsApply := false
+
+	// Apply branch filter
+	if branch != "" {
+		m.filters.SetBranchFilter(branch)
+		needsApply = true
+	}
+
+	// Apply author filter
+	if author != "" {
+		m.filters.SetAuthorFilter(author)
+		needsApply = true
+	}
+
+	// Apply tag filter
+	if tag != "" {
+		m.filters.SetTagFilter(tag)
+		needsApply = true
+	}
+
+	if needsApply {
+		m.filters.UpdateFilterActive()
+		result := m.filters.ApplyFilters()
+		if result.IsFiltered {
+			m.list.SetFilteredCommits(result.Commits, m.repo)
+		}
+	}
+}
+
 // renderHelp renders the help overlay
 func (m Model) renderHelp() string {
 	help := `Keyboard Shortcuts

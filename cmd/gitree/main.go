@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,24 +17,41 @@ import (
 )
 
 func main() {
-	// Handle flags
-	if len(os.Args) > 1 {
-		switch os.Args[1] {
-		case "--version", "-v":
-			fmt.Printf("gitree %s\n", version.String())
-			return
-		case "--check-update":
-			checkUpdate()
-			return
-		case "--help", "-h":
-			printUsage()
-			return
-		}
+	// Define flags
+	var (
+		showVersion   = flag.Bool("version", false, "Show version information")
+		showHelp      = flag.Bool("help", false, "Show help message")
+		checkUpdateF  = flag.Bool("check-update", false, "Check for new releases")
+		filterBranch  = flag.String("branch", "", "Filter by branch name")
+		filterAuthor  = flag.String("author", "", "Filter by author name")
+		filterTag     = flag.String("tag", "", "Filter by tag name")
+	)
+
+	// Short flags
+	flag.BoolVar(showVersion, "v", false, "Show version information")
+	flag.BoolVar(showHelp, "h", false, "Show help message")
+
+	flag.Usage = printUsage
+	flag.Parse()
+
+	// Handle info flags
+	if *showVersion {
+		fmt.Printf("gitree %s\n", version.String())
+		return
+	}
+	if *showHelp {
+		printUsage()
+		return
+	}
+	if *checkUpdateF {
+		checkUpdate()
+		return
 	}
 
+	// Get repository path from remaining args
 	repoPath := "."
-	if len(os.Args) > 1 && !strings.HasPrefix(os.Args[1], "-") {
-		repoPath = os.Args[1]
+	if flag.NArg() > 0 {
+		repoPath = flag.Arg(0)
 	}
 
 	// Expand ~ to home directory
@@ -77,6 +95,12 @@ func main() {
 	}
 
 	model := tui.NewModel(repo, repoPath, w, reader)
+
+	// Apply initial filters from CLI
+	if *filterBranch != "" || *filterAuthor != "" || *filterTag != "" {
+		model.ApplyInitialFilters(*filterBranch, *filterAuthor, *filterTag)
+	}
+
 	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
 
 	if _, err := p.Run(); err != nil {
@@ -143,8 +167,20 @@ func printUsage() {
 	fmt.Println("gitree - TUI git history visualizer")
 	fmt.Println()
 	fmt.Println("Usage:")
-	fmt.Println("  gitree [path]           Open repository at path (default: current directory)")
-	fmt.Println("  gitree --version, -v    Show version information")
-	fmt.Println("  gitree --check-update   Check for new releases")
-	fmt.Println("  gitree --help, -h       Show this help message")
+	fmt.Println("  gitree [flags] [path]")
+	fmt.Println()
+	fmt.Println("Flags:")
+	fmt.Println("  --branch <name>    Filter by branch name")
+	fmt.Println("  --author <name>    Filter by author name")
+	fmt.Println("  --tag <name>       Filter by tag name")
+	fmt.Println("  --version, -v      Show version information")
+	fmt.Println("  --check-update     Check for new releases")
+	fmt.Println("  --help, -h         Show this help message")
+	fmt.Println()
+	fmt.Println("Examples:")
+	fmt.Println("  gitree                      Open current directory")
+	fmt.Println("  gitree ~/projects/myrepo    Open specific repository")
+	fmt.Println("  gitree --branch main        Filter to main branch")
+	fmt.Println("  gitree --author Alice       Filter to Alice's commits")
+	fmt.Println("  gitree --tag v1.0.0         Filter to v1.0.0 tag history")
 }

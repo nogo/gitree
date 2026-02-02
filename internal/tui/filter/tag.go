@@ -277,3 +277,24 @@ func (f TagFilter) SelectedCount() int {
 func (f TagFilter) TotalCount() int {
 	return len(f.tags)
 }
+
+// SelectMatching selects tags whose name contains the given string (case-insensitive)
+func (f *TagFilter) SelectMatching(name string) {
+	name = strings.ToLower(name)
+	for _, tag := range f.tags {
+		if strings.Contains(strings.ToLower(tag), name) {
+			f.selected[tag] = true
+		}
+	}
+}
+
+// HasMatching returns true if any tag matches the given name
+func (f TagFilter) HasMatching(name string) bool {
+	name = strings.ToLower(name)
+	for _, tag := range f.tags {
+		if strings.Contains(strings.ToLower(tag), name) {
+			return true
+		}
+	}
+	return false
+}

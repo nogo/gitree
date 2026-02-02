@@ -129,7 +129,7 @@ func renderHistogram(bins []Bin, cursor int, focused bool, width, height int, zo
 	infoLine.WriteString("  ")
 	if focused && cursor >= 0 && cursor < len(bins) {
 		bin := bins[cursor]
-		info := bin.Start.Format("Jan 02")
+		info := bin.Start.Format("Jan 02 '06")
 		if bin.Count == 1 {
 			info += " (1 commit)"
 		} else {
@@ -215,7 +215,7 @@ func renderDateLabels(bins []Bin, binPositions []int, width int) string {
 	}
 
 	for _, idx := range labelIndices {
-		label := bins[idx].Start.Format("Jan 02")
+		label := bins[idx].Start.Format("Jan 02 '06")
 		pos := binPositions[idx]
 
 		// Center label on position

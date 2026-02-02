@@ -59,9 +59,15 @@ func TestFormatRelativeTime(t *testing.T) {
 			expected: "4w ago",
 		},
 		{
-			name:     "over 30 days shows date",
-			time:     now.Add(-60 * 24 * time.Hour),
-			expected: now.Add(-60 * 24 * time.Hour).Format("Jan 2"),
+			name: "over 30 days shows date",
+			time: now.Add(-60 * 24 * time.Hour),
+			expected: func() string {
+				t := now.Add(-60 * 24 * time.Hour)
+				if t.Year() != now.Year() {
+					return t.Format("Jan 2 '06")
+				}
+				return t.Format("Jan 2")
+			}(),
 		},
 	}
 

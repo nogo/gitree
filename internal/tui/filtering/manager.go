@@ -164,7 +164,7 @@ func (m *Manager) TimeFilterRange() string {
 	if !m.timeFilterActive {
 		return ""
 	}
-	return m.timeFilterStart.Format("Jan 2") + " - " + m.timeFilterEnd.Format("Jan 2")
+	return m.timeFilterStart.Format("Jan 2 '06") + " - " + m.timeFilterEnd.Format("Jan 2 '06")
 }
 
 // SelectedBranchCount returns the number of selected branches
@@ -195,6 +195,57 @@ func (m *Manager) SelectedTagCount() int {
 // TotalTagCount returns the total number of tags
 func (m *Manager) TotalTagCount() int {
 	return m.tagFilter.TotalCount()
+}
+
+// SetBranchFilter selects only branches matching the given name (partial match).
+// If no match is found, keeps all branches selected (default).
+func (m *Manager) SetBranchFilter(name string) {
+	name = strings.ToLower(name)
+	bf := &m.branchFilter
+
+	// Check if any match exists
+	hasMatch := false
+	for _, b := range m.repo.Branches {
+		if strings.Contains(strings.ToLower(b.Name), name) {
+			hasMatch = true
+			break
+		}
+	}
+
+	if !hasMatch {
+		return // Keep default (all selected)
+	}
+
+	// Deselect all, then select matching
+	for _, b := range m.repo.Branches {
+		bf.SetSelected(b.Name, false)
+	}
+	for _, b := range m.repo.Branches {
+		if strings.Contains(strings.ToLower(b.Name), name) {
+			bf.SetSelected(b.Name, true)
+		}
+	}
+}
+
+// SetAuthorFilter selects only authors matching the given name (partial match).
+// If no match is found, keeps all authors selected (default).
+func (m *Manager) SetAuthorFilter(name string) {
+	af := &m.authorFilter
+	if !af.HasMatching(name) {
+		return // Keep default (all selected)
+	}
+	af.SelectNone()
+	af.SelectMatching(name)
+}
+
+// SetTagFilter selects only tags matching the given name (partial match).
+// If no match is found, no tags are selected (shows all commits).
+func (m *Manager) SetTagFilter(name string) {
+	tf := &m.tagFilter
+	if !tf.HasMatching(name) {
+		return // Keep default (no tags selected = show all)
+	}
+	tf.SelectMatching(name)
 }
 
 // HighlightedEmails returns the emails of the highlighted author

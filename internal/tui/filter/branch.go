@@ -191,6 +191,11 @@ func (f *BranchFilter) Reset() {
 	}
 }
 
+// SetSelected sets the selection state for a specific branch
+func (f *BranchFilter) SetSelected(name string, selected bool) {
+	f.selected[name] = selected
+}
+
 // UpdateBranches updates the branch list (e.g., after repo refresh)
 func (f *BranchFilter) UpdateBranches(branches []domain.Branch) {
 	f.branches = branches

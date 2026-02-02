@@ -314,3 +314,31 @@ func (f AuthorFilter) SelectedCount() int {
 func (f AuthorFilter) TotalCount() int {
 	return len(f.authors)
 }
+
+// SelectNone deselects all authors
+func (f *AuthorFilter) SelectNone() {
+	for name := range f.selected {
+		f.selected[name] = false
+	}
+}
+
+// SelectMatching selects authors whose name contains the given string (case-insensitive)
+func (f *AuthorFilter) SelectMatching(name string) {
+	name = strings.ToLower(name)
+	for _, a := range f.authors {
+		if strings.Contains(a.Name, name) {
+			f.selected[a.Name] = true
+		}
+	}
+}
+
+// HasMatching returns true if any author matches the given name
+func (f AuthorFilter) HasMatching(name string) bool {
+	name = strings.ToLower(name)
+	for _, a := range f.authors {
+		if strings.Contains(a.Name, name) {
+			return true
+		}
+	}
+	return false
+}

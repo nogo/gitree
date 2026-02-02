@@ -6,7 +6,8 @@ import (
 )
 
 func formatRelativeTime(t time.Time) string {
-	d := time.Since(t)
+	now := time.Now()
+	d := now.Sub(t)
 	switch {
 	case d < time.Minute:
 		return "now"
@@ -19,6 +20,10 @@ func formatRelativeTime(t time.Time) string {
 	case d < 30*24*time.Hour:
 		return fmt.Sprintf("%dw ago", int(d.Hours()/(24*7)))
 	default:
+		// Show year if not current year
+		if t.Year() != now.Year() {
+			return t.Format("Jan 2 '06")
+		}
 		return t.Format("Jan 2")
 	}
 }
