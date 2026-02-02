@@ -2,11 +2,16 @@
 
 BINARY := gitree
 BUILD_DIR := bin
+VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+LDFLAGS := -s -w \
+	-X github.com/nogo/gitree/internal/version.Version=$(VERSION) \
+	-X github.com/nogo/gitree/internal/version.GitCommit=$(COMMIT)
 
 all: fmt tidy test build
 
 build:
-	go build -o $(BUILD_DIR)/$(BINARY) ./cmd/gitree
+	go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY) ./cmd/gitree
 
 test:
 	go test ./...
@@ -31,4 +36,4 @@ lint:
 	golangci-lint run
 
 install:
-	go install ./cmd/gitree
+	go install -ldflags "$(LDFLAGS)" ./cmd/gitree
