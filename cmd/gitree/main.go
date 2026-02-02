@@ -1,20 +1,38 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/nogo/gitree/internal/git"
 	"github.com/nogo/gitree/internal/tui"
+	"github.com/nogo/gitree/internal/version"
 	"github.com/nogo/gitree/internal/watcher"
 )
 
 func main() {
-	repoPath := "."
+	// Handle flags
 	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "--version", "-v":
+			fmt.Printf("gitree %s\n", version.String())
+			return
+		case "--check-update":
+			checkUpdate()
+			return
+		case "--help", "-h":
+			printUsage()
+			return
+		}
+	}
+
+	repoPath := "."
+	if len(os.Args) > 1 && !strings.HasPrefix(os.Args[1], "-") {
 		repoPath = os.Args[1]
 	}
 
@@ -65,4 +83,68 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func checkUpdate() {
+	fmt.Printf("gitree %s\n", version.String())
+	fmt.Println("Checking for updates...")
+
+	release, err := version.CheckLatestRelease(context.Background())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error checking for updates: %v\n", err)
+		os.Exit(1)
+	}
+
+	if version.IsNewer(version.Version, release.Version) {
+		fmt.Printf("\nNew version available: %s\n", release.Version)
+
+		// Find asset for current platform
+		asset := findPlatformAsset(release.Assets)
+		if asset != nil {
+			fmt.Printf("Download (%s): %s\n", formatSize(asset.Size), asset.DownloadURL)
+		} else {
+			fmt.Printf("Release page: %s\n", release.URL)
+		}
+	} else {
+		fmt.Println("You're running the latest version.")
+	}
+}
+
+func findPlatformAsset(assets []version.ReleaseAsset) *version.ReleaseAsset {
+	os := runtime.GOOS
+	arch := runtime.GOARCH
+
+	for _, asset := range assets {
+		name := strings.ToLower(asset.Name)
+		// Match OS and arch in filename (e.g., gitree_0.3.0_darwin_arm64.tar.gz)
+		if strings.Contains(name, os) && strings.Contains(name, arch) {
+			return &asset
+		}
+	}
+	return nil
+}
+
+func formatSize(bytes int64) string {
+	const (
+		KB = 1024
+		MB = 1024 * KB
+	)
+	switch {
+	case bytes >= MB:
+		return fmt.Sprintf("%.1f MB", float64(bytes)/MB)
+	case bytes >= KB:
+		return fmt.Sprintf("%.1f KB", float64(bytes)/KB)
+	default:
+		return fmt.Sprintf("%d B", bytes)
+	}
+}
+
+func printUsage() {
+	fmt.Println("gitree - TUI git history visualizer")
+	fmt.Println()
+	fmt.Println("Usage:")
+	fmt.Println("  gitree [path]           Open repository at path (default: current directory)")
+	fmt.Println("  gitree --version, -v    Show version information")
+	fmt.Println("  gitree --check-update   Check for new releases")
+	fmt.Println("  gitree --help, -h       Show this help message")
 }
