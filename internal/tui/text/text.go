@@ -60,6 +60,7 @@ func Truncate(s string, max int) string {
 }
 
 // TruncateAnsi truncates a string with ANSI codes to max display width.
+// Adds a reset sequence at the end to prevent color leaking.
 func TruncateAnsi(s string, max int) string {
 	if max <= 0 {
 		return ""
@@ -68,6 +69,7 @@ func TruncateAnsi(s string, max int) string {
 	var result strings.Builder
 	displayCount := 0
 	inEscape := false
+	truncated := false
 
 	for _, r := range s {
 		if r == '\x1b' {
@@ -83,10 +85,16 @@ func TruncateAnsi(s string, max int) string {
 			continue
 		}
 		if displayCount >= max {
+			truncated = true
 			break
 		}
 		result.WriteRune(r)
 		displayCount++
+	}
+
+	// Add reset sequence if truncated to prevent color leaking
+	if truncated {
+		result.WriteString("\x1b[0m")
 	}
 
 	return result.String()
@@ -144,16 +152,25 @@ func Fit(s string, width int) string {
 }
 
 // FitAnsi truncates or pads a string with ANSI codes to exactly the target display width.
+// Adds a reset sequence before padding to prevent color leaking.
 func FitAnsi(s string, width int) string {
 	if width <= 0 {
 		return ""
 	}
 	displayLen := Width(s)
 	if displayLen == width {
+		// Add reset to ensure colors don't leak
+		if strings.Contains(s, "\x1b[") {
+			return s + "\x1b[0m"
+		}
 		return s
 	}
 	if displayLen > width {
 		return TruncateAnsi(s, width)
+	}
+	// Add reset before padding to prevent color leaking into padding spaces
+	if strings.Contains(s, "\x1b[") {
+		return s + "\x1b[0m" + strings.Repeat(" ", width-displayLen)
 	}
 	return s + strings.Repeat(" ", width-displayLen)
 }

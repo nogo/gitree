@@ -239,6 +239,10 @@ func (m Model) layoutForViewport(start, end int) RowLayout {
 		graphWidth = MaxGraphWidth
 	}
 
+	// Tell the graph renderer the display width limit
+	// This prevents drawing connections to lanes that would be truncated
+	m.graph.SetDisplayWidth(graphWidth)
+
 	// Calculate layout with viewport-specific graph width
 	return NewRowLayoutWithGraph(m.width, graphWidth)
 }

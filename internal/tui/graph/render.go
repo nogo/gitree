@@ -8,23 +8,41 @@ import (
 
 // RowRenderer handles rendering graph cells for display
 type RowRenderer struct {
-	layout *GraphLayout
-	colors *ColorPalette
+	layout       *GraphLayout
+	colors       *ColorPalette
+	displayLanes int // max lanes to display (0 = all)
 }
 
 // NewRowRenderer creates a renderer for the given layout
 func NewRowRenderer(layout *GraphLayout, colors *ColorPalette) *RowRenderer {
 	return &RowRenderer{
-		layout: layout,
-		colors: colors,
+		layout:       layout,
+		colors:       colors,
+		displayLanes: 0, // default: show all
 	}
+}
+
+// SetDisplayLanes sets the maximum number of lanes to render.
+// Lanes beyond this limit will not be shown, and connections to them
+// will be truncated to prevent incomplete lines.
+func (r *RowRenderer) SetDisplayLanes(lanes int) {
+	r.displayLanes = lanes
+}
+
+// effectiveLanes returns the number of lanes to actually render
+func (r *RowRenderer) effectiveLanes() int {
+	if r.displayLanes > 0 && r.displayLanes < r.layout.MaxLanes {
+		return r.displayLanes
+	}
+	return r.layout.MaxLanes
 }
 
 // RenderRow produces the graph string for a given row index
 // Each lane takes 2 characters (symbol + connector/space), total width = MaxLanes * 2
 func (r *RowRenderer) RenderRow(row int) string {
+	maxLanes := r.effectiveLanes()
 	if row < 0 || row >= len(r.layout.Nodes) {
-		return strings.Repeat(" ", r.layout.MaxLanes*2)
+		return strings.Repeat(" ", maxLanes*2)
 	}
 
 	node := r.layout.Nodes[row]
@@ -34,7 +52,7 @@ func (r *RowRenderer) RenderRow(row int) string {
 	// Format: [cell0][sep0][cell1][sep1]... where each cell is 1 char and each sep is 1 char
 	var result strings.Builder
 
-	for lane := range r.layout.MaxLanes {
+	for lane := range maxLanes {
 		// Render the cell for this lane
 		var cellChar rune
 		var cellColor int
@@ -80,28 +98,32 @@ func (r *RowRenderer) RenderRow(row int) string {
 		}
 
 		// Write separator (connector or space) - except after last lane
-		if lane < r.layout.MaxLanes-1 {
-			connector := r.getConnector(row, lane, node)
+		if lane < maxLanes-1 {
+			connector := r.getConnector(row, lane, node, maxLanes)
 			result.WriteString(connector)
 		}
 	}
 
-	// Add trailing space for consistent width (MaxLanes * 2 total)
-	// We have MaxLanes cells + (MaxLanes-1) separators = 2*MaxLanes - 1 chars
-	// Add 1 space to make it 2*MaxLanes
+	// Add trailing space for consistent width (maxLanes * 2 total)
+	// We have maxLanes cells + (maxLanes-1) separators = 2*maxLanes - 1 chars
+	// Add 1 space to make it 2*maxLanes
 	result.WriteRune(' ')
 
 	return result.String()
 }
 
 // getConnector returns the connector character between lane i and i+1
-func (r *RowRenderer) getConnector(row, lane int, node *CommitNode) string {
+func (r *RowRenderer) getConnector(row, lane int, node *CommitNode, maxLanes int) string {
 	// Check if there's a horizontal connection between lane and lane+1
 	needsConnection := false
 	connectionLane := lane // for color
 
-	// Check merge connections
+	// Check merge connections - only if target is within display bounds
 	for _, mergeLane := range node.MergeFrom {
+		// Skip connections to lanes beyond display limit
+		if mergeLane >= maxLanes {
+			continue
+		}
 		if (mergeLane > node.Lane && lane >= node.Lane && lane < mergeLane) ||
 			(mergeLane < node.Lane && lane >= mergeLane && lane < node.Lane) {
 			needsConnection = true
@@ -110,9 +132,13 @@ func (r *RowRenderer) getConnector(row, lane int, node *CommitNode) string {
 		}
 	}
 
-	// Check fork connections
+	// Check fork connections - only if target is within display bounds
 	if !needsConnection {
 		for _, forkLane := range node.ForkTo {
+			// Skip connections to lanes beyond display limit
+			if forkLane >= maxLanes {
+				continue
+			}
 			if (forkLane > node.Lane && lane >= node.Lane && lane < forkLane) ||
 				(forkLane < node.Lane && lane >= forkLane && lane < node.Lane) {
 				needsConnection = true
@@ -146,8 +172,9 @@ var DimmedGraphStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("239"))
 
 // RenderRowDimmed produces a dimmed graph string for a given row index
 func (r *RowRenderer) RenderRowDimmed(row int) string {
+	maxLanes := r.effectiveLanes()
 	if row < 0 || row >= len(r.layout.Nodes) {
-		return strings.Repeat(" ", r.layout.MaxLanes*2)
+		return strings.Repeat(" ", maxLanes*2)
 	}
 
 	node := r.layout.Nodes[row]
@@ -155,7 +182,7 @@ func (r *RowRenderer) RenderRowDimmed(row int) string {
 
 	var result strings.Builder
 
-	for lane := range r.layout.MaxLanes {
+	for lane := range maxLanes {
 		var cellChar rune
 		hasContent := false
 
@@ -199,8 +226,8 @@ func (r *RowRenderer) RenderRowDimmed(row int) string {
 		}
 
 		// Write separator
-		if lane < r.layout.MaxLanes-1 {
-			connector := r.getConnectorDimmed(row, lane, node)
+		if lane < maxLanes-1 {
+			connector := r.getConnectorDimmed(row, lane, node, maxLanes)
 			result.WriteString(connector)
 		}
 	}
@@ -210,10 +237,14 @@ func (r *RowRenderer) RenderRowDimmed(row int) string {
 }
 
 // getConnectorDimmed returns a dimmed connector character
-func (r *RowRenderer) getConnectorDimmed(row, lane int, node *CommitNode) string {
+func (r *RowRenderer) getConnectorDimmed(row, lane int, node *CommitNode, maxLanes int) string {
 	needsConnection := false
 
 	for _, mergeLane := range node.MergeFrom {
+		// Skip connections to lanes beyond display limit
+		if mergeLane >= maxLanes {
+			continue
+		}
 		if (mergeLane > node.Lane && lane >= node.Lane && lane < mergeLane) ||
 			(mergeLane < node.Lane && lane >= mergeLane && lane < node.Lane) {
 			needsConnection = true
@@ -223,6 +254,10 @@ func (r *RowRenderer) getConnectorDimmed(row, lane int, node *CommitNode) string
 
 	if !needsConnection {
 		for _, forkLane := range node.ForkTo {
+			// Skip connections to lanes beyond display limit
+			if forkLane >= maxLanes {
+				continue
+			}
 			if (forkLane > node.Lane && lane >= node.Lane && lane < forkLane) ||
 				(forkLane < node.Lane && lane >= forkLane && lane < node.Lane) {
 				needsConnection = true
@@ -260,14 +295,15 @@ func (r *RowRenderer) displayWidth(s string) int {
 // RenderContinuation renders vertical continuation lines for expanded rows
 // This draws │ in all active lanes at the given row index
 func (r *RowRenderer) RenderContinuation(row int) string {
+	maxLanes := r.effectiveLanes()
 	if row < 0 || row >= len(r.layout.Nodes) {
-		return strings.Repeat(" ", r.layout.MaxLanes*2)
+		return strings.Repeat(" ", maxLanes*2)
 	}
 
 	activeLanes := r.layout.ActiveLanesAt(row)
 
 	var result strings.Builder
-	for lane := range r.layout.MaxLanes {
+	for lane := range maxLanes {
 		if activeLanes[lane] {
 			result.WriteString(r.colorForLane(lane).Render(string(CharVertical)))
 		} else {
@@ -275,7 +311,7 @@ func (r *RowRenderer) RenderContinuation(row int) string {
 		}
 
 		// Separator space
-		if lane < r.layout.MaxLanes-1 {
+		if lane < maxLanes-1 {
 			result.WriteRune(' ')
 		}
 	}

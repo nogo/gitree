@@ -47,6 +47,13 @@ func (r *Renderer) Width() int {
 	return r.layout.MaxLanes * 2
 }
 
+// SetDisplayWidth sets the maximum display width for the graph.
+// This prevents drawing connections to lanes that would be truncated.
+func (r *Renderer) SetDisplayWidth(width int) {
+	lanes := width / 2
+	r.rowRender.SetDisplayLanes(lanes)
+}
+
 // MaxLanesInRange returns the maximum lane used in a range of commits
 func (r *Renderer) MaxLanesInRange(start, end int) int {
 	if start < 0 {
