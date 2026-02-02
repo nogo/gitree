@@ -13,9 +13,11 @@ type Manager struct {
 	branchFilter    filter.BranchFilter
 	authorFilter    filter.AuthorFilter
 	authorHighlight filter.AuthorHighlight
+	tagFilter       filter.TagFilter
 
 	branchFilterActive bool
 	authorFilterActive bool
+	tagFilterActive    bool
 	timeFilterActive   bool
 	timeFilterStart    time.Time
 	timeFilterEnd      time.Time
@@ -35,6 +37,7 @@ func New(repo *domain.Repository) *Manager {
 		branchFilter:    filter.NewBranchFilter(repo.Branches),
 		authorFilter:    filter.NewAuthorFilter(repo.Commits),
 		authorHighlight: filter.NewAuthorHighlight(repo.Commits),
+		tagFilter:       filter.NewTagFilter(repo.Commits),
 		repo:            repo,
 	}
 }
@@ -45,6 +48,7 @@ func (m *Manager) UpdateRepo(repo *domain.Repository) {
 	m.branchFilter.UpdateBranches(repo.Branches)
 	m.authorFilter.UpdateAuthors(repo.Commits)
 	m.authorHighlight.UpdateAuthors(repo.Commits)
+	m.tagFilter.UpdateTags(repo.Commits)
 }
 
 // ApplyFilters applies all active filters and returns the result
@@ -55,6 +59,12 @@ func (m *Manager) ApplyFilters() Result {
 	if !m.branchFilter.AllSelected() {
 		selectedBranches := m.branchFilter.SelectedBranches()
 		filtered = m.filterCommitsByBranch(filtered, selectedBranches)
+	}
+
+	// Apply tag filter (if any tags selected)
+	if m.tagFilter.HasSelection() {
+		selectedTags := m.tagFilter.SelectedTags()
+		filtered = m.filterCommitsByTag(filtered, selectedTags)
 	}
 
 	// Apply author filter
@@ -93,8 +103,10 @@ func (m *Manager) Reset() {
 	m.branchFilter.Reset()
 	m.authorFilter.Reset()
 	m.authorHighlight.Reset()
+	m.tagFilter.Reset()
 	m.branchFilterActive = false
 	m.authorFilterActive = false
+	m.tagFilterActive = false
 	m.timeFilterActive = false
 	m.timeFilterStart = time.Time{}
 	m.timeFilterEnd = time.Time{}
@@ -104,6 +116,7 @@ func (m *Manager) Reset() {
 func (m *Manager) UpdateFilterActive() {
 	m.branchFilterActive = !m.branchFilter.AllSelected()
 	m.authorFilterActive = !m.authorFilter.AllSelected()
+	m.tagFilterActive = m.tagFilter.HasSelection()
 }
 
 // BranchFilter returns a pointer to the branch filter for UI updates
@@ -121,6 +134,11 @@ func (m *Manager) AuthorHighlight() *filter.AuthorHighlight {
 	return &m.authorHighlight
 }
 
+// TagFilter returns a pointer to the tag filter for UI updates
+func (m *Manager) TagFilter() *filter.TagFilter {
+	return &m.tagFilter
+}
+
 // BranchFilterActive returns whether a branch filter is applied
 func (m *Manager) BranchFilterActive() bool {
 	return m.branchFilterActive
@@ -129,6 +147,11 @@ func (m *Manager) BranchFilterActive() bool {
 // AuthorFilterActive returns whether an author filter is applied
 func (m *Manager) AuthorFilterActive() bool {
 	return m.authorFilterActive
+}
+
+// TagFilterActive returns whether a tag filter is applied
+func (m *Manager) TagFilterActive() bool {
+	return m.tagFilterActive
 }
 
 // TimeFilterActive returns whether a time filter is applied
@@ -162,6 +185,16 @@ func (m *Manager) SelectedAuthorCount() int {
 // TotalAuthorCount returns the total number of authors
 func (m *Manager) TotalAuthorCount() int {
 	return m.authorFilter.TotalCount()
+}
+
+// SelectedTagCount returns the number of selected tags
+func (m *Manager) SelectedTagCount() int {
+	return m.tagFilter.SelectedCount()
+}
+
+// TotalTagCount returns the total number of tags
+func (m *Manager) TotalTagCount() int {
+	return m.tagFilter.TotalCount()
 }
 
 // HighlightedEmails returns the emails of the highlighted author
@@ -269,5 +302,67 @@ func (m *Manager) filterCommitsByTime(commits []domain.Commit, start, end time.T
 			result = append(result, c)
 		}
 	}
+	return result
+}
+
+// filterCommitsByTag filters commits to those with selected tags + their ancestors
+func (m *Manager) filterCommitsByTag(commits []domain.Commit, tagNames []string) []domain.Commit {
+	if len(tagNames) == 0 {
+		return commits // No tags selected = show all
+	}
+
+	// Build set of selected tags
+	tagSet := make(map[string]bool)
+	for _, tag := range tagNames {
+		tagSet[tag] = true
+	}
+
+	// Find commits with selected tags
+	var headHashes []string
+	for _, c := range m.repo.Commits {
+		for _, tag := range c.Tags {
+			if tagSet[tag] {
+				headHashes = append(headHashes, c.Hash)
+				break
+			}
+		}
+	}
+
+	// Build hash → commit map for parent lookup
+	commitMap := make(map[string]*domain.Commit)
+	for i := range m.repo.Commits {
+		commitMap[m.repo.Commits[i].Hash] = &m.repo.Commits[i]
+	}
+
+	// BFS to find all reachable commits (tag commits + ancestors)
+	reachable := make(map[string]bool)
+	queue := headHashes
+
+	for len(queue) > 0 {
+		hash := queue[0]
+		queue = queue[1:]
+
+		if reachable[hash] {
+			continue
+		}
+		reachable[hash] = true
+
+		if commit, ok := commitMap[hash]; ok {
+			for _, parentHash := range commit.Parents {
+				if !reachable[parentHash] {
+					queue = append(queue, parentHash)
+				}
+			}
+		}
+	}
+
+	// Filter commits maintaining order
+	var result []domain.Commit
+	for _, c := range commits {
+		if reachable[c.Hash] {
+			result = append(result, c)
+		}
+	}
+
 	return result
 }

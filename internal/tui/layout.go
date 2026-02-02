@@ -133,6 +133,13 @@ func (m Model) renderFooter() string {
 		filterParts = append(filterParts, fmt.Sprintf("author:%d/%d", authorFiltered, authorTotal))
 	}
 
+	// Tag filter status
+	if m.TagFilterActive() {
+		tagFiltered := m.FilteredTagCount()
+		tagTotal := m.TotalTagCount()
+		filterParts = append(filterParts, fmt.Sprintf("tag:%d/%d", tagFiltered, tagTotal))
+	}
+
 	// Author highlight status
 	if m.AuthorHighlightActive() {
 		filterParts = append(filterParts, fmt.Sprintf("highlight:%s", m.HighlightedAuthorName()))
@@ -166,7 +173,7 @@ func (m Model) renderFooter() string {
 	} else if m.SearchActive() && m.SearchMatchCount() > 0 {
 		keys = "[n]ext [N]prev [t]ime [c]lear [q]"
 	} else {
-		keys = "[/]search [a]uthor [b]ranch [t]ime [tab]timeline [c]lear [q]"
+		keys = "[/]search [a]uthor [b]ranch [T]ag [t]ime [c]lear [q]"
 	}
 
 	// Build footer with spacing

@@ -28,7 +28,7 @@
 | 22 | Performance fixes | `done` | 21 (REQUIRED) |
 | 22a | UI/rendering fixes | `done` | 22 |
 | 23 | Tag visualization | `done` | - |
-| 24 | Tag filter | `pending` | 23 |
+| 24 | Tag filter | `done` | 23 |
 | 25 | Release check | `pending` | - |
 
 **Status values:** `pending` | `in_progress` | `done` | `skipped`
@@ -88,6 +88,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 | 2026-01-30 | 22 | Refactored rendering: text/ package, RowLayout, Row struct, dynamic graph width |
 | 2026-01-30 | 22a | Started: cursor bug when scrolling up at end of history |
 | 2026-02-02 | 23 | Added tag visualization: <tagname> badges with yellow styling |
+| 2026-02-02 | 24 | Added tag filter: T opens modal, shows tag commits + ancestors |
 
 ---
 

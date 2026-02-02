@@ -27,6 +27,7 @@ type Model struct {
 	showBranchFilter    bool
 	showAuthorFilter    bool
 	showAuthorHighlight bool
+	showTagFilter       bool
 	width               int
 	height              int
 	ready               bool
@@ -167,6 +168,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Handle tag filter overlay
+	if m.showTagFilter {
+		if keyMsg, ok := msg.(tea.KeyMsg); ok {
+			tf := m.filters.TagFilter()
+			var done, cancelled bool
+			*tf, _, done, cancelled = tf.Update(keyMsg)
+			if done {
+				m.applyFilter()
+				m.showTagFilter = false
+			}
+			if cancelled {
+				m.showTagFilter = false
+			}
+			return m, nil
+		}
+		return m, nil
+	}
+
 	// Handle search input mode
 	if m.search.IsInputMode() {
 		if keyMsg, ok := msg.(tea.KeyMsg); ok {
@@ -221,7 +240,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Recalculate histogram
 			m.histogram.Recalculate(msg.Repo.Commits, m.width)
 			// Reapply filters if any active
-			if m.filters.BranchFilterActive() || m.filters.AuthorFilterActive() || m.filters.TimeFilterActive() {
+			if m.filters.BranchFilterActive() || m.filters.AuthorFilterActive() || m.filters.TagFilterActive() || m.filters.TimeFilterActive() {
 				m.applyAllFilters()
 			} else {
 				m.list.SetRepo(msg.Repo)
@@ -335,6 +354,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.showAuthorHighlight = true
 			return m, nil
 
+		case "T":
+			m.filters.TagFilter().SetSize(m.width, m.height)
+			m.showTagFilter = true
+			return m, nil
+
 		case "/":
 			m.search.Activate()
 			return m, nil
@@ -396,6 +420,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.filters.BranchFilter().SetSize(msg.Width, msg.Height)
 		m.filters.AuthorFilter().SetSize(msg.Width, msg.Height)
 		m.filters.AuthorHighlight().SetSize(msg.Width, msg.Height)
+		m.filters.TagFilter().SetSize(msg.Width, msg.Height)
 	}
 
 	// Route updates to list
@@ -466,6 +491,9 @@ func (m Model) View() string {
 	if m.showAuthorHighlight {
 		return m.filters.AuthorHighlight().View()
 	}
+	if m.showTagFilter {
+		return m.filters.TagFilter().View()
+	}
 	if m.showDiff {
 		return m.renderWithDiff()
 	}
@@ -524,6 +552,21 @@ func (m Model) FilteredAuthorCount() int {
 // TotalAuthorCount returns the total number of authors
 func (m Model) TotalAuthorCount() int {
 	return m.filters.TotalAuthorCount()
+}
+
+// TagFilterActive returns whether a tag filter is currently applied
+func (m Model) TagFilterActive() bool {
+	return m.filters.TagFilterActive()
+}
+
+// FilteredTagCount returns the number of tags in filter
+func (m Model) FilteredTagCount() int {
+	return m.filters.SelectedTagCount()
+}
+
+// TotalTagCount returns the total number of tags
+func (m Model) TotalTagCount() int {
+	return m.filters.TotalTagCount()
 }
 
 // AuthorHighlightActive returns whether an author is currently highlighted
