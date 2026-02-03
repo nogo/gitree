@@ -1,244 +1,217 @@
-# Gitree - Discovery Document
+# Discovery Session
 
-> A terminal-based git history visualization tool with live updates and time-based navigation.
+> Load this file to start planning the next milestone.
 
----
+## Instructions for AI
 
-## Problem Statement
+You are helping plan the next development milestone. Your role:
 
-Existing git visualization tools (tig, lazygit, git log --graph) lack:
-- Intuitive time-based navigation (jump to date ranges, see commit density)
-- Modern visual design
-- Live updates when repository changes
-- Good filtering UX while maintaining graph context
-
-**Goal:** Build a TUI git graph tool focused on visual clarity, time-based exploration, and real-time awareness of repository changes.
+1. **Explore** - Read codebase to understand current state
+2. **Discuss** - Present options, challenge assumptions
+3. **Decide** - Help prioritize and select features
+4. **Generate** - Create phase specs and update ORCHESTRATOR.md
 
 ---
 
-## Target Users
+## Discovery Process
 
-- Developers who need to understand repository history visually
-- Teams doing code review, rebasing, or investigating when changes occurred
-- Users who work with medium-to-large repositories (1k - 100k commits)
+### STEP 1: Context Review
 
----
+**Do this immediately after loading this file:**
 
-## Core User Workflows
+```
+1. Read `.work/ROADMAP.md` (future ideas)
+2. Read `CHANGELOG.md` (what's built)
+3. Explore codebase structure (Glob for source files)
+4. Read key files to understand patterns (entry point, core types, main logic)
+```
 
-### 1. Explore History
-> "I want to see the full picture of how this repository evolved"
+**Then summarize to user:**
+> "I've reviewed the codebase. Current structure: [X packages/modules], [Y files]. Latest version added [Z]. The roadmap has [N] ideas across [M] categories. Ready to discuss?"
 
-- Open tool in repo root
-- See graph of all branches and commits
-- Scroll through history
-- Understand branch relationships at a glance
+### STEP 2: Discussion Loop
 
-### 2. Time-Based Navigation
-> "What happened last week?" or "Show me commits from Q3"
+Present roadmap options and drive decisions:
 
-- See a date histogram (commit density over time)
-- Select a time range to filter
-- Graph filters to show only commits in selected range
+1. **What problem are we solving?** - Which user pain point matters most?
+2. **What's the smallest useful increment?** - MVP for this milestone?
+3. **What can we cut?** - Nice-to-have vs essential?
+4. **What are the risks?** - Technical debt, breaking changes?
+5. **What's the theme?** - Single sentence for this milestone?
 
-### 3. Investigate a Commit
-> "What exactly changed in this commit?"
+**Challenge vague ideas.** If user is unclear, ask:
+- What specifically? (which feature, which behavior?)
+- Where does it go? (which component, which view?)
+- What's the interaction model? (keys, clicks, commands?)
 
-- Navigate to commit in graph
-- Press Enter to expand inline (keeps graph visible)
-- See list of changed files with additions/deletions
-- View diff of changes
+### STEP 3: Milestone Definition
 
-### 4. Filter by Context
-> "Show me only what Alice did on the feature branch"
+Agree on:
+- **Version number** (semver based on scope)
+- **Theme** (one sentence)
+- **Goals** (3-5 bullet points)
+- **Features** (3-8 items)
+- **Success criteria** (how to know it's done)
 
-- Filter by branch (show/hide branches)
-- Filter by author
-- Filters apply while maintaining graph structure
-- Clear indication of active filters
+### STEP 4: Phase Generation
 
-### 5. Highlight Contributor
-> "Show me everything Alice contributed at a glance"
+Break milestone into phases:
 
-- Select an author to highlight
-- Their commits glow/stand out in the graph (others dim)
-- Quickly see contribution patterns
-- Toggle between "highlight" (dim others) and "filter" (hide others)
+1. **Explore dependencies** - Use `Grep` to find where new code connects
+2. **Order by dependency** - What must exist before other things work?
+3. **Size each phase** - Target 50-150 LOC, single responsibility
+4. **Write phase specs** - Use template below, write to `.work/phases/`
 
-### 6. Monitor Changes
-> "I want to know when the repo updates"
+**Determine phase numbers:**
+```
+1. Read existing files: Glob .work/phases/phase-*.md
+2. Find highest number
+3. New phases start at highest + 1
+```
 
-- Tool silently updates graph when repo changes
-- New commits appear in graph automatically
-- No disruptive notifications, just visual update
+### STEP 5: Orchestrator Update
 
----
-
-## Current Features (v0.3.0)
-
-| Feature | Status | Keybinding |
-|---------|--------|------------|
-| Commit graph visualization | Done | - |
-| Branch visualization | Done | - |
-| Scroll/navigate history | Done | j/k, arrows |
-| Live repository watching | Done | - |
-| Branch filter | Done | `b` |
-| Author filter | Done | `a` |
-| Author highlight | Done | `A` |
-| Commit search | Done | `/`, `n`/`N` |
-| Date histogram | Done | `t`, `Tab` |
-| Inline commit expansion | Done | `Enter` |
-| File change list | Done | - |
-| Diff view | Done | `Enter` on file |
+Update `.work/ORCHESTRATOR.md`:
+- Set `Current Milestone` section (version, theme, goals)
+- Populate `Phase Queue` table
+- Add planning date to `Progress Log`
 
 ---
 
-## Future Ideas
+## Project Identity
 
-| Feature | Priority | Notes |
-|---------|----------|-------|
-| Workspace discovery | Medium | Run from any path, discover git repos in subdirectories |
-| Calendar heatmap | Low | GitHub-style activity view |
-| Custom color themes | Low | Match terminal theme |
-| Stash visualization | Low | Show stashes in graph |
+<!-- Customize this section for your project -->
 
-**Descoped** (out of visualization focus):
-- Checkout commit
-- Interactive rebase prep
-- Open in editor
+**Project:** gitree - TUI git history visualizer
 
----
-
-## UI Design
+| Aspect | Value |
+|--------|-------|
+| Language | Go (bubbletea + go-git) |
+| Focus | Visualization (not git actions) |
+| Differentiators | Time-based navigation, live watching, visual clarity |
 
 ### Design Principles
 
 1. **Clean over cluttered** - NOT like tig. Think htop, lazygit, k9s
 2. **Information density** - Show useful data, minimize chrome
-3. **Subtle structure** - Alignment over borders, spacing over separators
-4. **Scannable** - Clear visual hierarchy, eyes flow naturally
-5. **Breathing room** - Adequate spacing prevents visual fatigue
+3. **Visualization focus** - See history, don't manipulate it
+4. **Keyboard-first** - Vim-style navigation, discoverable shortcuts
 
-### Layout
+### What this project does NOT do (by design)
 
+- Checkout commits/branches
+- Interactive rebase
+- Staging/committing
+- Push/pull (visualization only)
+
+---
+
+## Tool Usage
+
+### Reading Context
+| Tool | Use For |
+|------|---------|
+| `Read` | Specific files |
+| `Glob` | Find files by pattern |
+| `Grep` | Search for patterns in code |
+
+### Writing Output
+| Tool | Use For |
+|------|---------|
+| `Write` | New phase spec files |
+| `Edit` | Update ORCHESTRATOR.md sections |
+
+### Exploring Code
 ```
-gitree                                                      my-project
-─────────────────────────────────────────────────────────────────────────
-     Message                                      Author       Date   Hash
-─────────────────────────────────────────────────────────────────────────
-  ○  [main] feat: add OAuth provider              Alice    29 Jan 15:23  a1b2c
-  ●  fix: token refresh on expiry                 Bob      29 Jan 14:13  b2c3d
-  ●  wip: testing OAuth flow                      Carol    29 Jan 12:15  c3d4e
-● │  changes for gitea certificate                Carol     4 Dec 12:46  i9j0k
-●─╯  merge: feature branch                        Alice     4 Nov 14:30  m3n4o
-─────────────────────────────────────────────────────────────────────────
-● watching   47/1284 commits   12 branches     [b]ranch [c]lear [?] [q]
-```
+# Find source files (adjust pattern for your language)
+Glob src/**/*.ts
+Glob internal/**/*.go
+Glob **/*.py
 
-### Inline Expansion (Commit Details)
+# Find where a type/function is used
+Grep "TypeName" --type {lang}
 
-```
-  ○  [main] feat: add OAuth provider              Alice    29 Jan 15:23  a1b2c
-  │  ╔════════════════════════════╤════════════════════════════════════╗
-  │  ║ Commit: a1b2c3d...         │ Files (5)  +42 -18                  ║
-  │  ║ Author: Alice <alice@...>  │ > M src/auth.go           +10 -5   ║
-  │  ║ Date:   Jan 29, 2026 15:23 │   A src/oauth.go          +32 -0   ║
-  │  ║ Parent: b2c3d4e            │   M internal/config.go    +0 -13   ║
-  │  ╚══════ [j/k] file  [Enter] diff  [Esc] close ════════════════════╝
-  ●  fix: token refresh on expiry                 Bob      29 Jan 14:13  b2c3d
+# Find existing patterns to follow
+Grep "function.*Pattern" --type {lang}
 ```
 
 ---
 
-## Technical Decisions
+## Output Artifacts
 
-### Language: Go
+### Phase Spec Template
 
-**Rationale:**
-- Fast iteration for prototyping
-- bubbletea is capable TUI framework
-- go-git is pure Go, no C dependencies
-- Good performance for target scale
+Write to `.work/phases/phase-{N}.md`:
 
-### Libraries
+```markdown
+# Phase {N}: {Name}
 
-| Purpose | Library |
-|---------|---------|
-| TUI Framework | bubbletea |
-| Styling | lipgloss |
-| Git operations | go-git |
-| File watching | fsnotify |
+## Goal
+{One sentence describing the outcome}
 
-### Architecture
+## Changes
+- `{file}`: {what changes}
+- `{file}`: {what changes}
 
-```
-cmd/gitree/main.go    Entry point, watcher setup
-internal/
-├── domain/           Core types (Commit, Branch, Repository)
-├── git/              go-git reader implementation
-├── watcher/          fsnotify file watcher
-└── tui/
-    ├── app.go        Main bubbletea model
-    ├── layout.go     Header/content/footer rendering
-    ├── styles.go     Centralized lipgloss styles
-    ├── messages.go   Custom tea.Msg types
-    ├── list/         Commit list + inline expansion
-    ├── diff/         Diff view overlay
-    ├── graph/        Graph rendering (lanes, DAG, colors)
-    ├── filter/       Branch/author filter modals
-    ├── search/       Commit search
-    └── histogram/    Date timeline
+## Implementation
+1. {Step with specific detail}
+2. {Step with specific detail}
+
+## Testing
+- {How to verify it works}
+
+## Estimated LOC
+{50-150}
 ```
 
----
+### Example Phase Spec
 
-## Key Design Decisions
+```markdown
+# Phase 12: User Authentication
 
-### 1. Graph algorithm
-Single-column with lane assignment for parallel branches. Color rotation per lane (6-color palette).
+## Goal
+Add login/logout functionality with session management.
 
-### 2. Date format
-Relative for recent, absolute for older:
-- < 1 hour: `Xm ago`
-- < 24 hours: `Xh ago`
-- < 7 days: `X days ago`
-- >= 7 days: `D Mon`
+## Changes
+- `src/auth/login.ts`: Add login handler with credential validation
+- `src/auth/session.ts`: Add session creation and token generation
+- `src/middleware/auth.ts`: Add authentication middleware
+- `src/routes/index.ts`: Register auth routes
 
-### 3. Inline expansion vs modal
-Commit details shown inline (expanding between rows) rather than as modal overlay. Keeps graph visible for context.
+## Implementation
+1. Create login handler that validates credentials against database
+2. Generate JWT token on successful login
+3. Create middleware that validates token on protected routes
+4. Add logout handler that invalidates session
+5. Register routes: POST /login, POST /logout
 
-### 4. Date histogram
-Video player timeline metaphor with braille density characters. Selection brackets for time range filtering.
+## Testing
+- Login with valid credentials → returns token
+- Login with invalid credentials → returns 401
+- Access protected route with token → succeeds
+- Access protected route without token → returns 401
 
----
-
-## Distribution
-
-### Release Process
-
-Releases automated via GitHub Actions. Push tag to trigger:
-
-```bash
-git tag v0.3.0
-git push origin v0.3.0
+## Estimated LOC
+~120
 ```
 
-### Build Matrix
+---
 
-| OS | Architectures |
-|----|---------------|
-| macOS | amd64, arm64 |
-| Linux | amd64, arm64 |
-| Windows | amd64, arm64 |
+## Reference Files
+
+| File | Purpose |
+|------|---------|
+| `CHANGELOG.md` | What's been built |
+| `.work/ROADMAP.md` | Future ideas to discuss |
+| `.work/ORCHESTRATOR.md` | Implementation coordination |
+| `.work/done/*.md` | Completed phase summaries |
 
 ---
 
-## Documentation
+## Session Start
 
-See `.work/ROADMAP.md` for implementation details and `.work/done/` for phase summaries.
+After completing Step 1 (context review), begin with:
 
----
+> "I've reviewed the codebase and documentation. [Summarize current state]. The roadmap includes [categories]. What direction interests you for the next milestone?"
 
-*Document created: 2025-01-15*
-*Last updated: 2026-01-30*
-*Status: v0.3.0 complete*
+Then follow steps 2-5.
