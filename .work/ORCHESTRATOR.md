@@ -148,7 +148,7 @@ internal/tui/insights/
 | 3 | Insights Model & Styles | done | 1, 2 |
 | 4 | Stats Rendering | done | 3 |
 | 5 | Heatmap Rendering & Layout | done | 3 |
-| 6 | App Integration | pending | 4, 5 |
+| 6 | App Integration | done | 4, 5 |
 
 **Status values:** `pending` | `in_progress` | `done` | `skipped`
 
@@ -358,6 +358,7 @@ If continuing a previous session:
 | 2026-02-03 | Phase 3 | Insights Model & Styles complete (104 LOC + 143 LOC tests) |
 | 2026-02-03 | Phase 4 | Stats Rendering complete (153 LOC + 251 LOC tests) |
 | 2026-02-03 | Phase 5 | Heatmap Rendering & Layout complete (382 LOC) |
+| 2026-02-03 | Phase 6 | App Integration complete (~70 LOC) |
 
 ---
 

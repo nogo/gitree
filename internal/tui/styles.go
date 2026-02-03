@@ -10,6 +10,9 @@ var (
 	HeaderDimStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("241"))
 
+	HeaderHighlightStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("205"))
+
 	FooterStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("241"))
 

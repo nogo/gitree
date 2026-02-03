@@ -26,14 +26,13 @@ func (v InsightsView) View() string {
 		content = v.renderNarrowLayout()
 	}
 
-	// Add summary line at bottom
-	summaryLine := v.renderSummaryLine()
+	result := content
 
-	return lipgloss.JoinVertical(
-		lipgloss.Left,
-		content,
-		summaryLine,
-	)
+	// Force exact height to keep footer at bottom
+	return lipgloss.NewStyle().
+		Width(v.width).
+		Height(v.height).
+		Render(result)
 }
 
 // renderWideLayout renders side-by-side stats and heatmap.
@@ -43,10 +42,9 @@ func (v InsightsView) renderWideLayout() string {
 	if statsPanelWidth < 30 {
 		statsPanelWidth = 30
 	}
-	heatmapPanelWidth := v.width - statsPanelWidth - 2 // 2 for gap
+	heatmapPanelWidth := v.width - statsPanelWidth - 3 // 3 for gap " │ "
 
-	// Reserve 2 lines for summary
-	panelHeight := v.height - 2
+	panelHeight := v.height
 	if panelHeight < 10 {
 		panelHeight = 10
 	}
@@ -54,11 +52,30 @@ func (v InsightsView) renderWideLayout() string {
 	statsPanel := v.renderStatsPanel(statsPanelWidth, panelHeight)
 	heatmapPanel := v.renderHeatmapPanel(heatmapPanelWidth, panelHeight)
 
+	// Apply fixed widths to panels
+	statsPanelStyled := lipgloss.NewStyle().
+		Width(statsPanelWidth).
+		Height(panelHeight).
+		Render(statsPanel)
+
+	heatmapPanelStyled := lipgloss.NewStyle().
+		Width(heatmapPanelWidth).
+		Height(panelHeight).
+		Render(heatmapPanel)
+
+	// Build vertical separator spanning full height
+	sepStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
+	var sepLines []string
+	for i := 0; i < panelHeight; i++ {
+		sepLines = append(sepLines, sepStyle.Render("│"))
+	}
+	separator := strings.Join(sepLines, "\n")
+
 	return lipgloss.JoinHorizontal(
 		lipgloss.Top,
-		statsPanel,
-		"  ", // gap
-		heatmapPanel,
+		statsPanelStyled,
+		separator,
+		heatmapPanelStyled,
 	)
 }
 
@@ -67,7 +84,7 @@ func (v InsightsView) renderNarrowLayout() string {
 	panelWidth := v.width
 
 	// Split height: stats 60%, heatmap 40%
-	availableHeight := v.height - 2 // Reserve for summary
+	availableHeight := v.height
 	statsPanelHeight := availableHeight * 60 / 100
 	heatmapPanelHeight := availableHeight - statsPanelHeight
 
@@ -91,9 +108,10 @@ func (v InsightsView) renderNarrowLayout() string {
 
 // renderStatsPanel renders the combined author and file statistics panel.
 func (v InsightsView) renderStatsPanel(width, height int) string {
-	// Split height between authors (top half) and files (bottom half)
-	authorsHeight := height / 2
-	filesHeight := height - authorsHeight
+	// Split height between authors and files, with 1 line gap
+	availableHeight := height - 1 // Reserve 1 line for gap
+	authorsHeight := availableHeight / 2
+	filesHeight := availableHeight - authorsHeight
 
 	authorsSection := v.renderAuthorsSection(width, authorsHeight)
 	filesSection := v.renderFilesSection(width, filesHeight)
@@ -101,6 +119,7 @@ func (v InsightsView) renderStatsPanel(width, height int) string {
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
 		authorsSection,
+		"", // Gap between sections
 		filesSection,
 	)
 }
@@ -228,34 +247,3 @@ func (v InsightsView) renderHeatmapPanel(width, height int) string {
 }
 
 // renderSummaryLine renders the bottom summary statistics.
-func (v InsightsView) renderSummaryLine() string {
-	summary := v.summary
-
-	var parts []string
-
-	// Total commits
-	parts = append(parts, fmt.Sprintf("%d commits", summary.TotalCommits))
-
-	// Total authors
-	parts = append(parts, fmt.Sprintf("%d authors", summary.TotalAuthors))
-
-	// Total files
-	parts = append(parts, fmt.Sprintf("%d files", summary.TotalFiles))
-
-	// Date range
-	if !summary.FirstCommit.IsZero() && !summary.LastCommit.IsZero() {
-		dateRange := fmt.Sprintf("%s - %s",
-			summary.FirstCommit.Format("Jan 2006"),
-			summary.LastCommit.Format("Jan 2006"),
-		)
-		parts = append(parts, dateRange)
-	}
-
-	// Additions/deletions
-	if summary.TotalAdditions > 0 || summary.TotalDeletions > 0 {
-		changes := fmt.Sprintf("+%d/-%d", summary.TotalAdditions, summary.TotalDeletions)
-		parts = append(parts, changes)
-	}
-
-	return strings.Join(parts, " | ")
-}

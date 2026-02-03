@@ -25,3 +25,12 @@ type ExpandedFilesLoadedMsg struct {
 	Files []domain.FileChange
 	Err   error
 }
+
+// InsightsLoadedMsg carries computed insights data
+type InsightsLoadedMsg struct {
+	Commits     []*domain.Commit
+	FileChanges map[string][]domain.FileChange
+}
+
+// SpinnerTickMsg triggers spinner animation update
+type SpinnerTickMsg struct{}

@@ -1,16 +1,29 @@
 package tui
 
 import (
+	"time"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/nogo/gitree/internal/domain"
 	"github.com/nogo/gitree/internal/tui/diff"
 	"github.com/nogo/gitree/internal/tui/filtering"
 	"github.com/nogo/gitree/internal/tui/histogram"
+	"github.com/nogo/gitree/internal/tui/insights"
 	"github.com/nogo/gitree/internal/tui/list"
 	"github.com/nogo/gitree/internal/tui/search"
 	"github.com/nogo/gitree/internal/watcher"
 )
+
+// Spinner frames for loading animation
+var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
+// spinnerTick returns a command that sends a tick after a delay
+func spinnerTick() tea.Cmd {
+	return tea.Tick(80*time.Millisecond, func(t time.Time) tea.Msg {
+		return SpinnerTickMsg{}
+	})
+}
 
 type Model struct {
 	repo     *domain.Repository
@@ -21,6 +34,7 @@ type Model struct {
 	filters  *filtering.Manager
 	search   search.Search
 	histogram           histogram.Histogram
+	insights            insights.InsightsView
 	watcher             *watcher.Watcher
 	watching            bool
 	showDiff            bool
@@ -29,6 +43,9 @@ type Model struct {
 	showAuthorHighlight bool
 	showTagFilter       bool
 	showHelp            bool
+	showInsights        bool
+	insightsLoading     bool
+	spinnerFrame        int
 	width               int
 	height              int
 	ready               bool
@@ -45,6 +62,7 @@ func NewModel(repo *domain.Repository, repoPath string, w *watcher.Watcher, read
 		filters:   filtering.New(repo),
 		search:    search.New(),
 		histogram: histogram.New(repo.Commits, 80), // default width, will resize
+		insights:  insights.New(),
 		watcher:   w,
 		watching:  w != nil,
 	}
@@ -134,8 +152,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			var done, cancelled bool
 			*bf, _, done, cancelled = bf.Update(keyMsg)
 			if done {
-				m.applyFilter()
+				cmd := m.applyFilter()
 				m.showBranchFilter = false
+				return m, cmd
 			}
 			if cancelled {
 				m.showBranchFilter = false
@@ -152,8 +171,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			var done, cancelled bool
 			*af, _, done, cancelled = af.Update(keyMsg)
 			if done {
-				m.applyFilter()
+				cmd := m.applyFilter()
 				m.showAuthorFilter = false
+				return m, cmd
 			}
 			if cancelled {
 				m.showAuthorFilter = false
@@ -188,8 +208,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			var done, cancelled bool
 			*tf, _, done, cancelled = tf.Update(keyMsg)
 			if done {
-				m.applyFilter()
+				cmd := m.applyFilter()
 				m.showTagFilter = false
+				return m, cmd
 			}
 			if cancelled {
 				m.showTagFilter = false
@@ -230,7 +251,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				var selectionChanged bool
 				m.histogram, _, selectionChanged = m.histogram.Update(keyMsg)
 				if selectionChanged {
-					m.applyTimeFilter()
+					cmd := m.applyTimeFilter()
+					return m, cmd
 				}
 				return m, nil
 			}
@@ -253,10 +275,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Recalculate histogram
 			m.histogram.Recalculate(msg.Repo.Commits, m.width)
 			// Reapply filters if any active
+			var cmd tea.Cmd
 			if m.filters.BranchFilterActive() || m.filters.AuthorFilterActive() || m.filters.TagFilterActive() || m.filters.TimeFilterActive() {
-				m.applyAllFilters()
+				cmd = m.applyAllFilters()
 			} else {
 				m.list.SetRepo(msg.Repo)
+				// Still need to reload insights if visible
+				if m.showInsights {
+					m.insightsLoading = true
+					cmd = tea.Batch(m.loadInsights(), spinnerTick())
+				}
 			}
 			// Reapply highlight if active
 			if m.filters.AuthorHighlightActive() {
@@ -266,6 +294,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.search.IsActive() {
 				m.executeSearch()
 			}
+			return m, cmd
 		}
 		return m, nil
 
@@ -282,6 +311,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.diffView.SetDiff(msg.Diff, msg.IsBinary)
 		} else {
 			m.diffView.SetDiff("", false)
+		}
+		return m, nil
+
+	case InsightsLoadedMsg:
+		m.insightsLoading = false
+		m.insights.SetSize(m.width, m.insightsContentHeight())
+		m.insights.Recalculate(msg.Commits, msg.FileChanges)
+		return m, nil
+
+	case SpinnerTickMsg:
+		if m.insightsLoading {
+			m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
+			return m, spinnerTick()
 		}
 		return m, nil
 
@@ -400,6 +442,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Toggle range/histogram visibility
 			m.histogram.Toggle()
 			m.recalculateListHeight()
+			m.insights.SetSize(m.width, m.insightsContentHeight())
+			return m, nil
+
+		case "i":
+			// Toggle insights view
+			m.showInsights = !m.showInsights
+			if m.showInsights {
+				m.insightsLoading = true
+				return m, tea.Batch(m.loadInsights(), spinnerTick())
+			}
 			return m, nil
 
 		case "tab":
@@ -419,6 +471,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.list.SetRepo(m.repo)
 			// Recalculate histogram with all commits
 			m.histogram.Recalculate(m.repo.Commits, m.width)
+			// Reload insights if visible
+			if m.showInsights {
+				m.insightsLoading = true
+				return m, tea.Batch(m.loadInsights(), spinnerTick())
+			}
 			return m, nil
 
 		case "esc":
@@ -438,6 +495,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.filters.AuthorFilter().SetSize(msg.Width, msg.Height)
 		m.filters.AuthorHighlight().SetSize(msg.Width, msg.Height)
 		m.filters.TagFilter().SetSize(msg.Width, msg.Height)
+		m.insights.SetSize(msg.Width, m.insightsContentHeight())
 	}
 
 	// Route updates to list
@@ -446,9 +504,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m *Model) applyFilter() {
+func (m *Model) applyFilter() tea.Cmd {
 	m.filters.UpdateFilterActive()
-	m.applyAllFilters()
+	return m.applyAllFilters()
 }
 
 func (m *Model) applyHighlight() {
@@ -467,20 +525,30 @@ func (m *Model) recalculateListHeight() {
 	m.list.SetSize(m.width, contentHeight)
 }
 
-func (m *Model) applyTimeFilter() {
+func (m *Model) insightsContentHeight() int {
+	// Header(1) + separator(1) + separator(1) + footer(1) = 4 lines (no column headers)
+	// Plus histogram height if visible
+	histHeight := m.histogram.Height()
+	contentHeight := m.height - 4 - histHeight
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
+	return contentHeight
+}
+
+func (m *Model) applyTimeFilter() tea.Cmd {
 	start, end, hasSelection := m.histogram.SelectedRange()
 	if !hasSelection {
 		m.filters.ClearTimeFilter()
 		// Reapply other filters without time constraint
-		m.applyAllFilters()
-		return
+		return m.applyAllFilters()
 	}
 
 	m.filters.SetTimeFilter(start, end, true)
-	m.applyAllFilters()
+	return m.applyAllFilters()
 }
 
-func (m *Model) applyAllFilters() {
+func (m *Model) applyAllFilters() tea.Cmd {
 	result := m.filters.ApplyFilters()
 	if result.IsFiltered {
 		m.list.SetFilteredCommits(result.Commits, m.repo)
@@ -491,6 +559,77 @@ func (m *Model) applyAllFilters() {
 	// Re-execute search if active
 	if m.search.IsActive() {
 		m.executeSearch()
+	}
+
+	// Reload insights if visible
+	if m.showInsights {
+		m.insightsLoading = true
+		return tea.Batch(m.loadInsights(), spinnerTick())
+	}
+	return nil
+}
+
+// loadInsights returns a command that loads insights data asynchronously
+func (m Model) loadInsights() tea.Cmd {
+	// Capture values for the closure
+	commits := m.list.Commits()
+	reader := m.reader
+	repoPath := m.repoPath
+
+	return func() tea.Msg {
+		// Convert to pointer slice for insights
+		commitPtrs := make([]*domain.Commit, len(commits))
+		for i := range commits {
+			commitPtrs[i] = &commits[i]
+		}
+
+		// Limit file change loading for performance on large repos
+		// Author stats use all commits (fast - just metadata)
+		// File stats only need recent commits to be meaningful
+		const maxFileChangeCommits = 200
+		fileChangeLimit := len(commits)
+		if fileChangeLimit > maxFileChangeCommits {
+			fileChangeLimit = maxFileChangeCommits
+		}
+
+		// Load file changes in parallel for better performance
+		type result struct {
+			hash  string
+			files []domain.FileChange
+		}
+		resultChan := make(chan result, fileChangeLimit)
+
+		// Use worker pool to limit concurrency
+		const maxWorkers = 20
+		sem := make(chan struct{}, maxWorkers)
+
+		for i := 0; i < fileChangeLimit; i++ {
+			go func(commit domain.Commit) {
+				sem <- struct{}{}        // acquire
+				defer func() { <-sem }() // release
+
+				files, err := reader.LoadFileChanges(repoPath, commit.Hash)
+				if err == nil {
+					resultChan <- result{hash: commit.Hash, files: files}
+				} else {
+					resultChan <- result{hash: commit.Hash, files: nil}
+				}
+			}(commits[i])
+		}
+
+		// Collect results
+		fileChanges := make(map[string][]domain.FileChange)
+		for i := 0; i < fileChangeLimit; i++ {
+			r := <-resultChan
+			if r.files != nil {
+				fileChanges[r.hash] = r.files
+			}
+		}
+
+		return InsightsLoadedMsg{
+			Commits:     commitPtrs,
+			FileChanges: fileChanges,
+		}
 	}
 }
 
@@ -513,6 +652,9 @@ func (m Model) View() string {
 	}
 	if m.showHelp {
 		return m.renderHelp()
+	}
+	if m.showInsights {
+		return m.renderInsightsLayout()
 	}
 	if m.showDiff {
 		return m.renderWithDiff()
@@ -676,6 +818,16 @@ func (m Model) HistogramHeight() int {
 	return m.histogram.Height()
 }
 
+// SpinnerFrame returns the current spinner animation frame
+func (m Model) SpinnerFrame() string {
+	return spinnerFrames[m.spinnerFrame]
+}
+
+// InsightsLoading returns whether insights are currently loading
+func (m Model) InsightsLoading() bool {
+	return m.insightsLoading
+}
+
 // ApplyInitialFilters applies filters from CLI arguments
 func (m *Model) ApplyInitialFilters(branch, author, tag string) {
 	needsApply := false
@@ -738,6 +890,7 @@ func (m Model) renderHelp() string {
    Tab           Return to list
 
  General
+   i             Insights view
    h             This help
    q             Quit
 

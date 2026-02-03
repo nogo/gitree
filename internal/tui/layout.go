@@ -91,6 +91,89 @@ func (m Model) renderContent() string {
 	return m.list.View()
 }
 
+func (m Model) renderInsightsLayout() string {
+	header := m.renderInsightsHeader()
+	separator := m.renderSeparator()
+	// Always show existing data - loading indicator is in header
+	content := m.insights.View()
+	if content == "" {
+		// Only show spinner text if no data yet (first load)
+		content = m.SpinnerFrame() + " Loading insights..."
+	}
+	histogram := m.renderHistogram()
+	footer := m.renderInsightsFooter()
+
+	if histogram != "" {
+		return lipgloss.JoinVertical(
+			lipgloss.Left,
+			header,
+			separator,
+			content,
+			separator,
+			histogram,
+			footer,
+		)
+	}
+
+	return lipgloss.JoinVertical(
+		lipgloss.Left,
+		header,
+		separator,
+		content,
+		separator,
+		footer,
+	)
+}
+
+func (m Model) renderInsightsHeader() string {
+	title := HeaderStyle.Render("gitree")
+	mode := HeaderHighlightStyle.Render(" [Insights]")
+
+	// Show loading indicator in header
+	loading := ""
+	if m.InsightsLoading() {
+		loading = HeaderDimStyle.Render(" " + m.SpinnerFrame() + " loading...")
+	}
+
+	repoName := HeaderDimStyle.Render(filepath.Base(m.repoPath))
+
+	// Calculate spacing to right-align repo name
+	titleLen := len("gitree") + len(" [Insights]") + len(loading)
+	repoLen := len(filepath.Base(m.repoPath))
+	spacing := m.width - titleLen - repoLen
+	if spacing < 1 {
+		spacing = 1
+	}
+
+	return title + mode + loading + strings.Repeat(" ", spacing) + repoName
+}
+
+func (m Model) renderInsightsFooter() string {
+	// Commit stats
+	filtered := m.FilteredCommitCount()
+	total := m.TotalCommitCount()
+	commitStats := fmt.Sprintf("%d/%d commits", filtered, total)
+
+	// Context-sensitive keybindings
+	var keys string
+	if m.HistogramFocused() {
+		keys = "[←→]nav [+/-]zoom [[]start []]end [enter]apply [tab]back"
+	} else {
+		keys = "[i]graph [a]uthor [b]ranch [t]ag [r]ange [c]lear [q]uit"
+	}
+
+	// Build footer with spacing
+	left := commitStats
+	right := keys
+
+	spacing := m.width - len(left) - len(right)
+	if spacing < 2 {
+		spacing = 2
+	}
+
+	return FooterStyle.Render(left + strings.Repeat(" ", spacing) + right)
+}
+
 func (m Model) renderFooter() string {
 	// Search input mode - show search box in footer
 	if m.SearchInputMode() {
@@ -173,7 +256,7 @@ func (m Model) renderFooter() string {
 	} else if m.SearchActive() && m.SearchMatchCount() > 0 {
 		keys = "[n]ext [N]prev [t]ime [c]lear [q]"
 	} else {
-		keys = "[h]elp [/]search [a]uthor [b]ranch [t]ag [r]ange [c]lear [q]"
+		keys = "[i]nsights [h]elp [/]search [a]uthor [b]ranch [t]ag [r]ange [c]lear [q]"
 	}
 
 	// Build footer with spacing
