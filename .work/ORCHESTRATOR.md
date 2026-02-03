@@ -124,16 +124,12 @@ internal/tui/insights/
 
 <!-- Updated by discovery process -->
 
-**Version:** 0.5.0
+**Version:** (next)
 
-**Theme:** Insights Mode - See patterns in your git history, not just commits
+**Theme:** (run DISCOVERY.md to plan next milestone)
 
 **Goals:**
-- Add statistics dashboard showing top authors and most-changed files
-- Add GitHub-style calendar heatmap for commit activity visualization
-- Create toggleable Insights Mode that replaces graph view
-- Integrate with existing filters (branch/author/tag/time all apply globally)
-- Responsive layout: side-by-side on wide terminals, stacked on narrow
+- (to be defined)
 
 ---
 
@@ -143,12 +139,7 @@ internal/tui/insights/
 
 | Phase | Name | Status | Blocks |
 |-------|------|--------|--------|
-| 1 | Stats Computation | done | - |
-| 2 | Heatmap Data | done | - |
-| 3 | Insights Model & Styles | done | 1, 2 |
-| 4 | Stats Rendering | done | 3 |
-| 5 | Heatmap Rendering & Layout | done | 3 |
-| 6 | App Integration | done | 4, 5 |
+| - | - | - | - |
 
 **Status values:** `pending` | `in_progress` | `done` | `skipped`
 
@@ -352,13 +343,13 @@ If continuing a previous session:
 
 | Date | Phase | Notes |
 |------|-------|-------|
-| 2026-02-03 | Planning | v0.5.0 Insights Mode - 6 phases defined |
-| 2026-02-03 | Phase 1 | Stats Computation complete (149 LOC + 285 LOC tests) |
-| 2026-02-03 | Phase 2 | Heatmap Data complete (203 LOC + 357 LOC tests) |
-| 2026-02-03 | Phase 3 | Insights Model & Styles complete (104 LOC + 143 LOC tests) |
-| 2026-02-03 | Phase 4 | Stats Rendering complete (153 LOC + 251 LOC tests) |
-| 2026-02-03 | Phase 5 | Heatmap Rendering & Layout complete (382 LOC) |
-| 2026-02-03 | Phase 6 | App Integration complete (~70 LOC) |
+| - | - | - |
+
+---
+
+## Completed Milestones
+
+- **v0.5.0** - Insights Mode (see `.work/done/v0.5.0-insights-mode.md`)
 
 ---
 

@@ -30,6 +30,7 @@ Use gitree alongside your existing workflow, not as a replacement.
 - **Author highlight** - Dim other commits to focus on one contributor
 - **Search** - Find commits by message or hash
 - **Date histogram** - Timeline showing commit density, filter by time range
+- **Insights mode** - Statistics dashboard with top authors, most-changed files, and activity heatmap
 - **Diff view** - View file changes with syntax highlighting
 - **Vim-style navigation** - Keyboard-driven with mouse support
 - **Update checker** - Check for new releases via `--check-update`
@@ -101,6 +102,7 @@ gitree --check-update          # Check for new releases
 | `/` | Search commits |
 | `n` / `N` | Next/previous match |
 | `c` | Clear all filters |
+| `i` | Toggle insights view |
 | `h` | Show help |
 
 ### Timeline

@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.5.0] - 2026-02-03
+
+### Added
+- **Insights mode** - Toggle with `i` key to view statistics dashboard
+- **Top authors** - Shows most active contributors with commit counts and percentages
+- **Most changed files** - Shows files with highest churn
+- **Activity heatmap** - GitHub-style calendar showing commit density over time
+- **Loading animation** - Spinner in header during insights calculation
+
+### Changed
+- All filters (branch, author, tag, time range) now apply to both graph and insights views
+- Async loading with parallel workers for better performance on large repos
+
 ## [0.4.0] - 2026-02-02
 
 ### Added

@@ -15,9 +15,9 @@ Future ideas after user testing.
 |---------|-------------|
 | Commit comparison | Select two commits, see diff between them |
 | Branch comparison | Visual diff between branches |
-| Statistics dashboard | Author contributions, file churn, frequency |
+| ~~Statistics dashboard~~ | ~~Author contributions, file churn, frequency~~ ✓ v0.5.0 |
 | Blame integration | Jump from diff to blame view |
-| Calendar heatmap | GitHub-style activity visualization |
+| ~~Calendar heatmap~~ | ~~GitHub-style activity visualization~~ ✓ v0.5.0 |
 
 ## Performance & Compatibility
 | Feature | Description |
