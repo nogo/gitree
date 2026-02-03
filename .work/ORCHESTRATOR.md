@@ -145,7 +145,7 @@ internal/tui/insights/
 |-------|------|--------|--------|
 | 1 | Stats Computation | done | - |
 | 2 | Heatmap Data | done | - |
-| 3 | Insights Model & Styles | pending | 1, 2 |
+| 3 | Insights Model & Styles | done | 1, 2 |
 | 4 | Stats Rendering | pending | 3 |
 | 5 | Heatmap Rendering & Layout | pending | 3 |
 | 6 | App Integration | pending | 4, 5 |
@@ -355,6 +355,7 @@ If continuing a previous session:
 | 2026-02-03 | Planning | v0.5.0 Insights Mode - 6 phases defined |
 | 2026-02-03 | Phase 1 | Stats Computation complete (149 LOC + 285 LOC tests) |
 | 2026-02-03 | Phase 2 | Heatmap Data complete (203 LOC + 357 LOC tests) |
+| 2026-02-03 | Phase 3 | Insights Model & Styles complete (104 LOC + 143 LOC tests) |
 
 ---
 
